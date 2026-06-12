@@ -1,0 +1,843 @@
+import { ICONS, injectIcons } from "./icons.js";
+import { FLOOR_LAYOUTS, hasLayout } from "./floors.js";
+
+// === 定数 ===
+const DAYS = ["月", "火", "水", "木", "金", "土"];
+const PERIODS = [1, 2, 3, 4, 5, 6];
+const PERIOD_TIMES = {
+  1: ["09:00", "10:40"],
+  2: ["10:50", "12:30"],
+  3: ["13:20", "15:00"],
+  4: ["15:10", "16:50"],
+  5: ["17:00", "18:40"],
+  6: ["18:50", "20:30"],
+};
+const FLOORS = ["all", "B1", "1", "2", "3", "5", "6"];
+const FLOOR_LABELS = { all: "全階", B1: "B1", "1": "1F", "2": "2F", "3": "3F", "5": "5F", "6": "6F" };
+const WINGS = ["C", "N", "W", "E"];
+
+// フィルタ選択肢
+const FILTER_OPTIONS = [
+  { value: "all", label: "全て", meta: "すべての教室を表示" },
+  { value: "free", label: "空きのみ", meta: "今授業がない教室だけ" },
+  { value: "friends", label: "友達がいる教室", meta: "フォロー中の友達がマーク済み" },
+  { value: "wing-C", label: "C棟のみ", meta: "Center wing" },
+  { value: "wing-N", label: "N棟のみ", meta: "North wing" },
+  { value: "wing-W", label: "W棟のみ", meta: "West wing" },
+  { value: "wing-E", label: "E棟のみ", meta: "East wing" },
+];
+
+const SEMESTER_OPTIONS = [
+  { value: "spring", label: "春学期", meta: "4月〜7月" },
+  { value: "fall", label: "秋学期", meta: "9月〜1月" },
+];
+
+// モック友達
+const MOCK_FRIENDS = [
+  { id: "f1", name: "太郎", marker: { room: "5C04", kind: "planned" } },
+  { id: "f2", name: "花子", marker: { room: "5W04", kind: "in" } },
+  { id: "f3", name: "次郎", marker: null },
+];
+
+// === State ===
+const state = {
+  semester: "spring",
+  day: "月",
+  period: 3,
+  floor: "all",
+  view: "list",
+  filter: "all",
+  selectedRoom: null,
+  myMarkers: loadMyMarkers(),
+};
+
+let SCHEDULE = null;
+let ROOMS = null;
+
+// === 初期化 ===
+async function init() {
+  injectIcons();
+  await loadData();
+  setNowState();
+  bindEvents();
+  render();
+}
+
+async function loadData() {
+  const [s, r] = await Promise.all([
+    fetch("./data/schedule.json").then((r) => r.json()),
+    fetch("./data/rooms.json").then((r) => r.json()),
+  ]);
+  SCHEDULE = s;
+  // B2 は表示対象から除外（加山さん指示）
+  ROOMS = r.rooms.filter((room) => room.floor !== -2);
+}
+
+function setNowState() {
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  state.semester = m >= 4 && m <= 9 ? "spring" : "fall";
+  const dayIdx = now.getDay();
+  if (dayIdx >= 1 && dayIdx <= 6) {
+    state.day = DAYS[dayIdx - 1];
+  } else {
+    state.day = "月";
+  }
+  state.period = currentPeriod(now);
+}
+
+function currentPeriod(now) {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  for (const p of PERIODS) {
+    const [s, e] = PERIOD_TIMES[p];
+    const startMin = toMin(s);
+    const endMin = toMin(e);
+    if (minutes >= startMin && minutes < endMin) return p;
+    if (minutes < startMin) return p;
+  }
+  return 1;
+}
+function toMin(t) {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function bindEvents() {
+  // 階ピル → ピッカー開く
+  document.querySelector('[data-picker="floor"]').addEventListener("click", () => {
+    openPicker("floor");
+  });
+  // 表示切替
+  document.querySelectorAll(".vt-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      updateState({ view: btn.dataset.view });
+    });
+  });
+  // シート閉じ（全シート共通）
+  document.querySelectorAll("[data-close-sheet]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const id = el.dataset.closeSheet;
+      document.getElementById(id).setAttribute("aria-hidden", "true");
+      if (id === "detail-sheet") state.selectedRoom = null;
+    });
+  });
+  // 1分ごとに現在時刻を再計算
+  setInterval(() => {
+    setNowState();
+    render();
+  }, 60000);
+}
+
+// === ピッカー === //
+function openPicker(type) {
+  const titleEl = document.getElementById("picker-title");
+  const optsEl = document.getElementById("picker-options");
+  optsEl.className = "picker-options";
+
+  let title = "";
+  let html = "";
+
+  if (type === "floor") {
+    title = "階を選択";
+    optsEl.classList.add("grid", "grid-floor");
+    html = FLOORS.map((f) => {
+      const on = state.floor === f ? " on" : "";
+      const sub = f === "all" ? "B1 〜 6F" :
+                  f === "B1" ? "地下1階" :
+                  `${f}階`;
+      return `<button class="picker-opt-tile${on}" data-pick="floor" data-value="${f}">
+        <span>${FLOOR_LABELS[f]}</span>
+        <span class="sub">${sub}</span>
+      </button>`;
+    }).join("");
+  } else if (type === "day") {
+    title = "曜日を選択";
+    optsEl.classList.add("grid", "grid-day");
+    html = DAYS.map((d) => {
+      const on = state.day === d ? " on" : "";
+      return `<button class="picker-opt-tile${on}" data-pick="day" data-value="${d}">${d}曜</button>`;
+    }).join("");
+  } else if (type === "period") {
+    title = "時限を選択";
+    optsEl.classList.add("grid", "grid-period");
+    html = PERIODS.map((p) => {
+      const on = state.period === p ? " on" : "";
+      const t = PERIOD_TIMES[p];
+      return `<button class="picker-opt-tile${on}" data-pick="period" data-value="${p}">
+        <span>${p}限</span>
+        <span class="sub">${t[0]}–${t[1]}</span>
+      </button>`;
+    }).join("");
+  } else if (type === "semester") {
+    title = "学期を選択";
+    html = SEMESTER_OPTIONS.map((o) => {
+      const on = state.semester === o.value ? " on" : "";
+      return `<button class="picker-opt-row${on}" data-pick="semester" data-value="${o.value}">
+        <span class="check" data-icon="check"></span>
+        <span class="label">${o.label}</span>
+        <span class="opt-meta">${o.meta}</span>
+      </button>`;
+    }).join("");
+  } else if (type === "filter") {
+    title = "絞り込み";
+    html = FILTER_OPTIONS.map((o) => {
+      const on = state.filter === o.value ? " on" : "";
+      return `<button class="picker-opt-row${on}" data-pick="filter" data-value="${o.value}">
+        <span class="check" data-icon="check"></span>
+        <span class="label">${o.label}</span>
+        <span class="opt-meta">${o.meta}</span>
+      </button>`;
+    }).join("");
+  }
+
+  titleEl.textContent = title;
+  optsEl.innerHTML = html;
+  injectIcons(optsEl);
+
+  optsEl.querySelectorAll("[data-pick]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const key = b.dataset.pick;
+      let value = b.dataset.value;
+      if (key === "period") value = Number(value);
+      updateState({ [key]: value });
+      closePicker();
+    });
+  });
+
+  document.getElementById("picker-sheet").setAttribute("aria-hidden", "false");
+}
+
+function closePicker() {
+  document.getElementById("picker-sheet").setAttribute("aria-hidden", "true");
+}
+
+// === State 操作 ===
+function updateState(partial) {
+  Object.assign(state, partial);
+  render();
+}
+
+function loadMyMarkers() {
+  try {
+    return JSON.parse(localStorage.getItem("my-markers") || "{}");
+  } catch {
+    return {};
+  }
+}
+function saveMyMarkers() {
+  localStorage.setItem("my-markers", JSON.stringify(state.myMarkers));
+}
+
+// === データ取得ヘルパー ===
+function getRoomCourses(room, semester, day, period) {
+  return (
+    SCHEDULE.by_time?.[semester]?.[day]?.[String(period)]?.[room] || []
+  );
+}
+function isBusy(room, semester, day, period) {
+  return getRoomCourses(room, semester, day, period).length > 0;
+}
+function nextCoursesToday(room, semester, day, fromPeriod) {
+  const out = [];
+  const dayMap = SCHEDULE.by_room?.[room]?.[semester]?.[day] || {};
+  for (const p of PERIODS) {
+    if (p <= fromPeriod) continue;
+    const cs = dayMap[String(p)] || [];
+    for (const c of cs) out.push({ period: p, course: c });
+  }
+  return out;
+}
+function friendsInRoom(roomId) {
+  return MOCK_FRIENDS.filter((f) => f.marker?.room === roomId);
+}
+// 自分 + 友達の合計（実際に部屋に「いる」人数 = inMarker / kind="in"）
+function peopleInRoom(roomId) {
+  const friendsIn = MOCK_FRIENDS.filter(
+    (f) => f.marker?.room === roomId && f.marker?.kind === "in"
+  );
+  const meIn = state.myMarkers[roomId] === "in" ? 1 : 0;
+  return friendsIn.length + meIn;
+}
+// 「予定」の人数 (友達 + 自分)
+function plannersForRoom(roomId) {
+  const friendsPlanned = MOCK_FRIENDS.filter(
+    (f) => f.marker?.room === roomId && f.marker?.kind === "planned"
+  );
+  const mePlanned = state.myMarkers[roomId] === "planned" ? 1 : 0;
+  return friendsPlanned.length + mePlanned;
+}
+
+// === レンダ ===
+function render() {
+  syncPills();
+  renderNowSummary();
+  renderHeaderSub();
+  if (state.view === "list") {
+    renderListView();
+    setViewToggle("list");
+  } else {
+    renderMapView();
+    setViewToggle("map");
+  }
+}
+
+function syncPills() {
+  document.getElementById("pv-floor").textContent = FLOOR_LABELS[state.floor];
+}
+
+function renderNowSummary() {
+  document.getElementById("now-line").textContent = `今 ${state.period}限`;
+}
+
+function renderTimeDisplay() {
+  const t = PERIOD_TIMES[state.period];
+  const text = `${t[0]} – ${t[1]}  /  ${state.day}曜${state.period}限  /  ${
+    state.semester === "spring" ? "春学期" : "秋学期"
+  }`;
+  document.getElementById("time-display").textContent = text;
+}
+
+function renderHeaderSub() {
+  const total = ROOMS.length;
+  const free = ROOMS.filter(
+    (r) => !isBusy(r.room, state.semester, state.day, state.period)
+  ).length;
+  const sem = state.semester === "spring" ? "春" : "秋";
+  document.getElementById("hd-sub").textContent = `${sem}・${state.day}${state.period}限・空き${free}室`;
+}
+
+function setViewToggle(view) {
+  document.querySelectorAll(".vt-btn").forEach((b) => {
+    b.classList.toggle("on", b.dataset.view === view);
+    b.setAttribute("aria-selected", b.dataset.view === view ? "true" : "false");
+  });
+}
+
+// === リスト表示 ===
+function renderListView() {
+  const filteredRooms = filterRooms(ROOMS);
+  if (!filteredRooms.length) {
+    document.getElementById("content").innerHTML =
+      `<div class="empty-state">該当する教室がありません</div>`;
+    return;
+  }
+
+  // 空き / 授業中 にグルーピング
+  const free = [];
+  const busy = [];
+  for (const r of filteredRooms) {
+    const courses = getRoomCourses(r.room, state.semester, state.day, state.period);
+    if (courses.length === 0) free.push(r);
+    else busy.push({ room: r, course: courses[0] });
+  }
+
+  const friendsByRoom = {};
+  MOCK_FRIENDS.forEach((f) => {
+    if (f.marker?.room) {
+      friendsByRoom[f.marker.room] = friendsByRoom[f.marker.room] || [];
+      friendsByRoom[f.marker.room].push(f);
+    }
+  });
+
+  let html = "";
+
+  if (free.length) {
+    html += `<div class="list-section">`;
+    html += `<div class="list-section-head">空き教室 (${free.length}室)</div>`;
+    for (const r of free) {
+      const here = peopleInRoom(r.room);
+      const planned = plannersForRoom(r.room);
+      const next = nextCoursesToday(r.room, state.semester, state.day, state.period);
+      const nextStr =
+        next.length > 0
+          ? `次: ${next[0].period}限 ${truncate(next[0].course.name, 14)}`
+          : "今日この後の授業なし";
+      const tags = (r.tags || []).map(
+        (t) => `<span class="badge tag">${t}</span>`
+      ).join("");
+      const bigBadge = r.kind === "big" ? `<span class="badge big">大教室</span>` : "";
+      let peopleBadge = "";
+      if (here > 0) peopleBadge = `<span class="badge friends">👥 ${here}人</span>`;
+      else if (planned > 0) peopleBadge = `<span class="badge tag">予定 ${planned}</span>`;
+      // 空きで人がいる場合、メイン行を「空き · 〇人いる」に変えて気づきやすく
+      const mainLine = here > 0 ? `空き · 👥 ${here}人いる` : "空き";
+      html += `
+        <button class="list-item" data-room="${r.room}">
+          <span class="dot free"></span>
+          <span class="room-id">${r.room}</span>
+          <span class="body">
+            <span class="room-line">${mainLine}</span>
+            <span class="room-meta">${nextStr}</span>
+          </span>
+          <span class="badges">
+            ${peopleBadge}
+            ${bigBadge}
+            ${tags}
+          </span>
+        </button>
+      `;
+    }
+    html += `</div>`;
+  }
+
+  if (busy.length) {
+    html += `<div class="list-section">`;
+    html += `<div class="list-section-head">授業中 (${busy.length}室)</div>`;
+    for (const item of busy) {
+      const r = item.room;
+      const c = item.course;
+      const friendsHere = friendsByRoom[r.room] || [];
+      const tags = (r.tags || []).map(
+        (t) => `<span class="badge tag">${t}</span>`
+      ).join("");
+      const bigBadge = r.kind === "big" ? `<span class="badge big">大教室</span>` : "";
+      const friendsBadge =
+        friendsHere.length > 0
+          ? `<span class="badge friends">👥 ${friendsHere.length}</span>`
+          : "";
+      html += `
+        <button class="list-item" data-room="${r.room}">
+          <span class="dot busy"></span>
+          <span class="room-id">${r.room}</span>
+          <span class="body">
+            <span class="room-line">${escapeHtml(truncate(c.name, 30))}</span>
+            <span class="room-meta">${escapeHtml(truncate(c.professor, 24))}</span>
+          </span>
+          <span class="badges">
+            ${friendsBadge}
+            ${bigBadge}
+            ${tags}
+          </span>
+        </button>
+      `;
+    }
+    html += `</div>`;
+  }
+
+  const el = document.getElementById("content");
+  el.innerHTML = html;
+  el.querySelectorAll("[data-room]").forEach((b) => {
+    b.addEventListener("click", () => openSheet(b.dataset.room));
+  });
+}
+
+// === マップ表示: 横向き建物デフォルメ ===
+// 各階を「N棟が上、W-C-E が下に横並び」のフロアプラン風に描画
+function renderMapView() {
+  const filteredRooms = filterRooms(ROOMS);
+  if (!filteredRooms.length) {
+    document.getElementById("content").innerHTML =
+      `<div class="empty-state">該当する教室がありません</div>`;
+    return;
+  }
+  // 階+ウィングでグルーピング
+  const groups = {};
+  for (const r of filteredRooms) {
+    const f = r.floor === null ? "?" : r.floor;
+    const fk = String(f);
+    groups[fk] = groups[fk] || {};
+    const w = r.wing || "?";
+    groups[fk][w] = groups[fk][w] || [];
+    groups[fk][w].push(r);
+  }
+
+  let html = "";
+  // 階の並び順: 上層 → 下層（6F, 5F, ..., 1F, B1, B2）
+  const floorKeys = Object.keys(groups).sort((a, b) => Number(b) - Number(a));
+  for (const fk of floorKeys) {
+    html += renderFloorPlan(fk, groups[fk]);
+  }
+
+  const el = document.getElementById("content");
+  el.innerHTML = html;
+  el.querySelectorAll("[data-room]").forEach((b) => {
+    b.addEventListener("click", () => openSheet(b.dataset.room));
+  });
+}
+
+function renderFloorPlan(floorKey, wingsMap) {
+  const fNum = Number(floorKey);
+  const label = fNum < 0 ? `B${Math.abs(fNum)}F` : `${floorKey}F`;
+  const allRooms = Object.values(wingsMap).flat();
+  const total = allRooms.length;
+  const free = allRooms.filter((r) => !isBusy(r.room, state.semester, state.day, state.period)).length;
+
+  const svg = renderFloorPlanSVG(floorKey, wingsMap);
+
+  return `
+    <div class="bldg-floor">
+      <div class="bldg-floor-head">
+        <span class="bldg-floor-label">${label}</span>
+        <span class="bldg-floor-stat">空き ${free} / ${total}</span>
+      </div>
+      <div class="bldg-svg-wrap">
+        ${svg}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * 茗荷谷キャンパス フロアプラン SVG レンダリング
+ *
+ * 各階のレイアウトは floors.js の FLOOR_LAYOUTS に座標で定義済み
+ * - 公式キャンパスマップを近似した教室位置
+ * - データに無い教室 (研究室など) は灰色で非クリック
+ * - 学生食堂・ラウンジ・吹抜等の特殊エリアは色付きラベル
+ */
+function renderFloorPlanSVG(floorKey, wingsMap) {
+  const layout = FLOOR_LAYOUTS[floorKey];
+  if (!layout) {
+    // レイアウト未定義の階は簡易グリッドにフォールバック
+    return renderFallbackGrid(wingsMap);
+  }
+  return renderCustomLayout(floorKey, layout);
+}
+
+function renderCustomLayout(floorKey, layout) {
+  // データ内の教室を高速参照できるよう Set 化
+  const dataRoomMap = new Map(ROOMS.map((r) => [r.room, r]));
+
+  let sectionsHTML = "";
+  for (const sec of layout.sections || []) {
+    sectionsHTML += `
+      <g class="svg-section svg-section-${sec.kind}">
+        <rect x="${sec.x}" y="${sec.y}" width="${sec.w}" height="${sec.h}" rx="4" />
+        <text x="${sec.x + sec.w / 2}" y="${sec.y + sec.h / 2 + 4}" text-anchor="middle" class="section-label">${escapeHtml(sec.label)}</text>
+      </g>
+    `;
+  }
+
+  let cellsHTML = "";
+  for (const [roomId, pos] of Object.entries(layout.rooms)) {
+    if (pos.isHidden) continue;
+    const dataKey = pos.dataRoom || roomId; // データの参照キー (3W01 → 3BIG 等)
+    const isDataRoom = dataRoomMap.has(dataKey);
+    let cls = "svg-room";
+    let interactive = false;
+    let courses = [];
+    let here = 0;
+    let isBig = false;
+    let dataInfo = null;
+
+    if (isDataRoom) {
+      dataInfo = dataRoomMap.get(dataKey);
+      courses = getRoomCourses(dataKey, state.semester, state.day, state.period);
+      const busy = courses.length > 0;
+      cls += busy ? " cell-busy" : " cell-free";
+      isBig = dataInfo.kind === "big";
+      if (isBig) cls += " cell-big";
+      here = peopleInRoom(dataKey);
+      interactive = true;
+    } else {
+      // データに無い教室 (研究室等)
+      cls += " cell-disabled";
+    }
+
+    const cx = pos.x + pos.w / 2;
+    const cy = pos.y + pos.h / 2;
+    const fontSize = pos.w < 50 ? 10 : pos.w < 80 ? 12 : 14;
+    const showText = pos.displayLabel || roomId;
+    const subLabel = pos.dataRoom ? pos.dataRoom : "";
+    // 回転 (Excalidraw からの角度・度数) - 矩形・友達ドットだけ回転、ラベルは水平を保つ
+    const angle = pos.angle || 0;
+    const rotateTransform = angle !== 0 ? ` transform="rotate(${angle} ${cx} ${cy})"` : "";
+
+    cellsHTML += `
+      <g${interactive ? ` data-room="${dataKey}"` : ""} class="${cls}">
+        <g${rotateTransform}>
+          <rect x="${pos.x}" y="${pos.y}" width="${pos.w}" height="${pos.h}" rx="4" />
+          ${
+            here > 0
+              ? `<circle cx="${pos.x + pos.w - 11}" cy="${pos.y + 11}" r="9" class="svg-friend-dot"/>
+                 <text x="${pos.x + pos.w - 11}" y="${pos.y + 14}" text-anchor="middle" style="font-size:11px;fill:white;font-weight:700;">${here}</text>`
+              : ""
+          }
+        </g>
+        <text x="${cx}" y="${cy + (subLabel ? -3 : fontSize / 3)}" text-anchor="middle" style="font-size:${fontSize}px;">${escapeHtml(showText)}</text>
+        ${subLabel ? `<text x="${cx}" y="${cy + fontSize}" text-anchor="middle" style="font-size:${Math.max(8, fontSize - 4)}px;opacity:0.7;">${escapeHtml(subLabel)}</text>` : ""}
+      </g>
+    `;
+  }
+
+  const mainPath = layout.mainOutline || layout.outline || "";
+  const annexPath = layout.annexOutline || "";
+  return `
+    <svg viewBox="${layout.viewBox}" xmlns="http://www.w3.org/2000/svg" class="floor-svg" preserveAspectRatio="xMidYMid meet">
+      ${mainPath ? `<path d="${mainPath}" class="bldg-outline" />` : ""}
+      ${annexPath ? `<path d="${annexPath}" class="bldg-outline bldg-outline-annex" />` : ""}
+      ${sectionsHTML}
+      ${cellsHTML}
+    </svg>
+  `;
+}
+
+// レイアウト未定義階のフォールバック (シンプルグリッド)
+function renderFallbackGrid(wingsMap) {
+  let html = '<svg viewBox="0 0 1000 420" xmlns="http://www.w3.org/2000/svg" class="floor-svg" preserveAspectRatio="xMidYMid meet">';
+  html += '<rect x="50" y="50" width="900" height="320" rx="12" class="bldg-outline" />';
+  let y = 80;
+  for (const wingKey of ["N", "W", "C", "E"]) {
+    const list = wingsMap[wingKey];
+    if (!list || !list.length) continue;
+    const sorted = list.slice().sort((a, b) => (a.number || 0) - (b.number || 0));
+    html += `<text x="80" y="${y}" class="wing-svg-label">${wingKey}棟</text>`;
+    let x = 200;
+    for (const r of sorted) {
+      const courses = getRoomCourses(r.room, state.semester, state.day, state.period);
+      const busy = courses.length > 0;
+      const cls = busy ? "cell-busy" : "cell-free";
+      const here = peopleInRoom(r.room);
+      html += `<g data-room="${r.room}" class="svg-room ${cls}">
+        <rect x="${x}" y="${y - 18}" width="70" height="32" rx="4"/>
+        <text x="${x + 35}" y="${y + 2}" text-anchor="middle" style="font-size:12px;">${r.room}</text>
+        ${here > 0 ? `<circle cx="${x + 64}" cy="${y - 12}" r="6" class="svg-friend-dot"/><text x="${x + 64}" y="${y - 9}" text-anchor="middle" style="font-size:9px;fill:white;font-weight:700;">${here}</text>` : ""}
+      </g>`;
+      x += 78;
+      if (x > 900) { x = 200; y += 40; }
+    }
+    y += 60;
+  }
+  html += '</svg>';
+  return html;
+}
+
+function friendsLabel(roomId) {
+  const fs = friendsInRoom(roomId);
+  if (fs.length > 0) return `👥 ${fs.length}人`;
+  return null;
+}
+
+// === フィルタ ===
+function filterRooms(list) {
+  return list.filter((r) => {
+    // 階
+    if (state.floor !== "all") {
+      const targetFloor = state.floor.startsWith("B") ? -Number(state.floor.slice(1)) : Number(state.floor);
+      if (r.floor !== targetFloor) return false;
+    }
+    // フィルタ
+    if (state.filter === "free") {
+      if (isBusy(r.room, state.semester, state.day, state.period)) return false;
+    } else if (state.filter === "friends") {
+      if (!friendsInRoom(r.room).length) return false;
+    } else if (state.filter.startsWith("wing-")) {
+      const w = state.filter.slice(5);
+      if (r.wing !== w) return false;
+    }
+    return true;
+  });
+}
+
+// === シート (詳細) ===
+function openSheet(roomId) {
+  state.selectedRoom = roomId;
+  const room = ROOMS.find((r) => r.room === roomId);
+  if (!room) return;
+  const courses = getRoomCourses(roomId, state.semester, state.day, state.period);
+  const isCurrentlyBusy = courses.length > 0;
+  const next = nextCoursesToday(roomId, state.semester, state.day, state.period);
+  const friendsHere = friendsInRoom(roomId);
+  const inMarker = state.myMarkers[roomId];
+
+  const tagsHtml = (room.tags || []).map(
+    (t) => `<span class="badge tag">${t}</span>`
+  ).join("");
+
+  const floorDisp = room.floor === null ? "?" : (room.floor < 0 ? `B${Math.abs(room.floor)}` : `${room.floor}F`);
+  const membersStr = room.members && room.members.length > 0 ? ` <span class="badge tag">${room.members.join("+")}</span>` : "";
+  const bigBadge = room.kind === "big" ? `<span class="badge big">大教室(結合)</span>` : "";
+
+  let html = `
+    <div class="sheet-title-row">
+      <div>
+        <div class="sheet-room-id">${room.room}</div>
+        <div class="sheet-meta-line">
+          <span>${floorDisp}</span>
+          <span>${room.wing || "?"}棟</span>
+          ${bigBadge}
+          ${membersStr}
+          ${tagsHtml}
+        </div>
+      </div>
+      <div class="sheet-status-pill ${isCurrentlyBusy ? "busy" : "free"}">
+        ${isCurrentlyBusy ? "授業中" : "空き"}
+      </div>
+    </div>
+  `;
+
+  if (isCurrentlyBusy) {
+    const c = courses[0];
+    html += `
+      <div class="sheet-section">
+        <div class="now-course-card">
+          <div class="course-name">${escapeHtml(c.name)}</div>
+          <div class="course-prof">${escapeHtml(c.professor)}</div>
+          <div class="course-time">${PERIOD_TIMES[state.period][0]} – ${PERIOD_TIMES[state.period][1]}  ·  ${state.period}限</div>
+        </div>
+      </div>
+    `;
+    // 同授業の友達 (mock: 仮で1人だけ)
+    const sameCourseFriends = friendsHere.filter(
+      (f) => f.marker?.kind === "in" && getRoomCourses(roomId, state.semester, state.day, state.period).length > 0
+    );
+    html += `
+      <div class="sheet-section">
+        <div class="sheet-section-title">同じ授業の友達</div>
+        ${
+          sameCourseFriends.length
+            ? `<div class="friend-list">${sameCourseFriends.map(friendRow).join("")}</div>`
+            : `<div class="empty-mini">フォロー中の友達はこの授業を取っていません</div>`
+        }
+      </div>
+    `;
+  } else {
+    // 自分のマーカー
+    html += `
+      <div class="sheet-section">
+        <div class="sheet-section-title">いまの状況</div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span class="badge friends">👥 ${friendsHere.length + (inMarker === "in" ? 1 : 0)}人</span>
+          ${
+            inMarker === "in"
+              ? `<span style="font-size:12px; color:var(--free-deep); font-weight:600;">あなたが入室中</span>`
+              : inMarker === "planned"
+              ? `<span style="font-size:12px; color:var(--accent-deep); font-weight:600;">あなたが「使う予定」マーク中</span>`
+              : ""
+          }
+        </div>
+      </div>
+    `;
+
+    // いる友達
+    html += `
+      <div class="sheet-section">
+        <div class="sheet-section-title">いる友達</div>
+        ${
+          friendsHere.length
+            ? `<div class="friend-list">${friendsHere.map(friendRow).join("")}</div>`
+            : `<div class="empty-mini">いまここに友達はいません</div>`
+        }
+      </div>
+    `;
+
+    // アクション
+    html += `
+      <div class="action-row">
+        ${
+          inMarker === "in"
+            ? `<button class="action-btn exit" data-action="exit"><span data-icon="exit-room"></span> 退室する</button>`
+            : `<button class="action-btn in-room" data-action="enter"><span data-icon="enter-room"></span> 入室する</button>`
+        }
+        <button class="action-btn ${inMarker === "planned" ? "primary" : "secondary"}" data-action="bookmark">
+          <span data-icon="bookmark"></span>
+          ${inMarker === "planned" ? "予約解除" : "使う予定 (仮)"}
+        </button>
+      </div>
+    `;
+  }
+
+  // これからの予定
+  html += `
+    <div class="sheet-section">
+      <div class="sheet-section-title">今日この後の予定</div>
+      ${
+        next.length > 0
+          ? next
+              .map(
+                (n) => `
+                <div class="timeline-item">
+                  <div class="timeline-time">${n.period}限<br><span style="font-weight:500;">${PERIOD_TIMES[n.period][0]}</span></div>
+                  <div class="timeline-content">
+                    <div class="name">${escapeHtml(n.course.name)}</div>
+                    <div class="prof">${escapeHtml(n.course.professor)}</div>
+                  </div>
+                </div>
+              `
+              )
+              .join("")
+          : `<div class="empty-mini">今日この後の授業はありません</div>`
+      }
+    </div>
+  `;
+
+  document.getElementById("sheet-content").innerHTML = html;
+  injectIcons(document.getElementById("sheet-content"));
+
+  // アクション
+  document.getElementById("sheet-content").querySelectorAll("[data-action]").forEach((b) => {
+    b.addEventListener("click", () => handleAction(b.dataset.action, roomId));
+  });
+
+  document.getElementById("detail-sheet").setAttribute("aria-hidden", "false");
+}
+
+function closeSheet() {
+  document.getElementById("detail-sheet").setAttribute("aria-hidden", "true");
+  state.selectedRoom = null;
+}
+
+// 念のため: モバイルでスクロールロック（ボトムシート展開時に背面スクロール抑止）
+function applyScrollLock() {
+  const anySheetOpen = document.querySelectorAll('.sheet[aria-hidden="false"]').length > 0;
+  document.body.style.overflow = anySheetOpen ? "hidden" : "";
+}
+// オブザーバーでシート状態を監視
+new MutationObserver(applyScrollLock).observe(document.body, {
+  attributes: true,
+  subtree: true,
+  attributeFilter: ["aria-hidden"],
+});
+
+function handleAction(action, roomId) {
+  const cur = state.myMarkers[roomId];
+  if (action === "enter") {
+    state.myMarkers[roomId] = "in";
+  } else if (action === "exit") {
+    delete state.myMarkers[roomId];
+  } else if (action === "bookmark") {
+    if (cur === "planned") delete state.myMarkers[roomId];
+    else state.myMarkers[roomId] = "planned";
+  }
+  saveMyMarkers();
+  openSheet(roomId); // 再描画
+  render();
+}
+
+function friendRow(f) {
+  const kindLabel =
+    f.marker?.kind === "in"
+      ? '<span class="friend-meta">入室中</span>'
+      : f.marker?.kind === "planned"
+      ? '<span class="friend-meta">使う予定</span>'
+      : '<span class="friend-meta">予定なし</span>';
+  return `
+    <div class="friend-row">
+      <div class="friend-avatar">${f.name.slice(0, 1)}</div>
+      <div class="friend-name">${f.name}</div>
+      ${kindLabel}
+    </div>
+  `;
+}
+
+// === Utility ===
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+function truncate(s, n) {
+  if (!s) return "";
+  if (s.length <= n) return s;
+  return s.slice(0, n) + "…";
+}
+
+// Boot
+init().catch((e) => {
+  console.error(e);
+  document.getElementById("content").innerHTML = `<div class="empty-state">読み込みエラー: ${escapeHtml(e.message)}</div>`;
+});

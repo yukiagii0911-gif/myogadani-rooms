@@ -1,0 +1,703 @@
+{
+  "generated_at": "2026-06-11T01:28:31.308720+09:00",
+  "source": "courses_A0_2026_2026-06-10T02-47-26.json",
+  "rooms": [
+    {
+      "room": "1W01",
+      "floor": 1,
+      "wing": "W",
+      "number": 1,
+      "kind": "normal",
+      "tags": [],
+      "hybrid_with_online_count": 2
+    },
+    {
+      "room": "2BIG",
+      "floor": 2,
+      "wing": "W",
+      "number": null,
+      "kind": "big",
+      "members": [
+        "2W01",
+        "2W02"
+      ],
+      "tags": [],
+      "hybrid_with_online_count": 2
+    },
+    {
+      "room": "2C02",
+      "floor": 2,
+      "wing": "C",
+      "number": 2,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "2C03",
+      "floor": 2,
+      "wing": "C",
+      "number": 3,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "2E02",
+      "floor": 2,
+      "wing": "E",
+      "number": 2,
+      "kind": "normal",
+      "tags": [
+        "通教"
+      ]
+    },
+    {
+      "room": "2E03",
+      "floor": 2,
+      "wing": "E",
+      "number": 3,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "2E04",
+      "floor": 2,
+      "wing": "E",
+      "number": 4,
+      "kind": "normal",
+      "tags": [],
+      "hybrid_with_online_count": 1
+    },
+    {
+      "room": "2E05",
+      "floor": 2,
+      "wing": "E",
+      "number": 5,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "2E06",
+      "floor": 2,
+      "wing": "E",
+      "number": 6,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "2E07",
+      "floor": 2,
+      "wing": "E",
+      "number": 7,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "2E08",
+      "floor": 2,
+      "wing": "E",
+      "number": 8,
+      "kind": "normal",
+      "tags": [],
+      "hybrid_with_online_count": 1
+    },
+    {
+      "room": "3BIG",
+      "floor": 3,
+      "wing": "W",
+      "number": null,
+      "kind": "big",
+      "members": [
+        "3W01",
+        "3W02"
+      ],
+      "tags": [],
+      "hybrid_with_online_count": 5
+    },
+    {
+      "room": "3C03",
+      "floor": 3,
+      "wing": "C",
+      "number": 3,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "3C13",
+      "floor": 3,
+      "wing": "C",
+      "number": 13,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "3E02",
+      "floor": 3,
+      "wing": "E",
+      "number": 2,
+      "kind": "normal",
+      "tags": [
+        "情報"
+      ]
+    },
+    {
+      "room": "3E03",
+      "floor": 3,
+      "wing": "E",
+      "number": 3,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "3E04",
+      "floor": 3,
+      "wing": "E",
+      "number": 4,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "3E05",
+      "floor": 3,
+      "wing": "E",
+      "number": 5,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "3E06",
+      "floor": 3,
+      "wing": "E",
+      "number": 6,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "3E07",
+      "floor": 3,
+      "wing": "E",
+      "number": 7,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "3E08",
+      "floor": 3,
+      "wing": "E",
+      "number": 8,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "3E09",
+      "floor": 3,
+      "wing": "E",
+      "number": 9,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "3E10",
+      "floor": 3,
+      "wing": "E",
+      "number": 10,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5C02",
+      "floor": 5,
+      "wing": "C",
+      "number": 2,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5C03",
+      "floor": 5,
+      "wing": "C",
+      "number": 3,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5C04",
+      "floor": 5,
+      "wing": "C",
+      "number": 4,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5C06",
+      "floor": 5,
+      "wing": "C",
+      "number": 6,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5C08",
+      "floor": 5,
+      "wing": "C",
+      "number": 8,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5C09",
+      "floor": 5,
+      "wing": "C",
+      "number": 9,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5C10",
+      "floor": 5,
+      "wing": "C",
+      "number": 10,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5C11",
+      "floor": 5,
+      "wing": "C",
+      "number": 11,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5N01",
+      "floor": 5,
+      "wing": "N",
+      "number": 1,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5N02",
+      "floor": 5,
+      "wing": "N",
+      "number": 2,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5N03",
+      "floor": 5,
+      "wing": "N",
+      "number": 3,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5N04",
+      "floor": 5,
+      "wing": "N",
+      "number": 4,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5N05",
+      "floor": 5,
+      "wing": "N",
+      "number": 5,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5N06",
+      "floor": 5,
+      "wing": "N",
+      "number": 6,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W01",
+      "floor": 5,
+      "wing": "W",
+      "number": 1,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W02",
+      "floor": 5,
+      "wing": "W",
+      "number": 2,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W03",
+      "floor": 5,
+      "wing": "W",
+      "number": 3,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W04",
+      "floor": 5,
+      "wing": "W",
+      "number": 4,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W05",
+      "floor": 5,
+      "wing": "W",
+      "number": 5,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W06",
+      "floor": 5,
+      "wing": "W",
+      "number": 6,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W07",
+      "floor": 5,
+      "wing": "W",
+      "number": 7,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W08",
+      "floor": 5,
+      "wing": "W",
+      "number": 8,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W09",
+      "floor": 5,
+      "wing": "W",
+      "number": 9,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "5W10",
+      "floor": 5,
+      "wing": "W",
+      "number": 10,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "6C08",
+      "floor": 6,
+      "wing": "C",
+      "number": 8,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "6C09",
+      "floor": 6,
+      "wing": "C",
+      "number": 9,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "6C10",
+      "floor": 6,
+      "wing": "C",
+      "number": 10,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "6C11",
+      "floor": 6,
+      "wing": "C",
+      "number": 11,
+      "kind": "normal",
+      "tags": []
+    },
+    {
+      "room": "B1C16",
+      "floor": -1,
+      "wing": "C",
+      "number": 16,
+      "kind": "basement",
+      "tags": []
+    },
+    {
+      "room": "B1E04",
+      "floor": -1,
+      "wing": "E",
+      "number": 4,
+      "kind": "basement",
+      "tags": [
+        "多目的ルーム"
+      ]
+    },
+    {
+      "room": "B1W01",
+      "floor": -1,
+      "wing": "W",
+      "number": 1,
+      "kind": "basement",
+      "tags": []
+    },
+    {
+      "room": "B1W02",
+      "floor": -1,
+      "wing": "W",
+      "number": 2,
+      "kind": "basement",
+      "tags": [],
+      "hybrid_with_online_count": 2
+    },
+    {
+      "room": "B2N02",
+      "floor": -2,
+      "wing": "N",
+      "number": 2,
+      "kind": "basement",
+      "tags": [
+        "トレーニングルーム"
+      ]
+    }
+  ],
+  "usage": {
+    "1W01": {
+      "spring": 14,
+      "fall": 17
+    },
+    "2BIG": {
+      "spring": 18,
+      "fall": 15
+    },
+    "2C02": {
+      "spring": 17,
+      "fall": 18
+    },
+    "2C03": {
+      "spring": 20,
+      "fall": 19
+    },
+    "2E02": {
+      "spring": 11,
+      "fall": 10
+    },
+    "2E03": {
+      "spring": 13,
+      "fall": 15
+    },
+    "2E04": {
+      "spring": 14,
+      "fall": 16
+    },
+    "2E05": {
+      "spring": 18,
+      "fall": 17
+    },
+    "2E06": {
+      "spring": 22,
+      "fall": 22
+    },
+    "2E07": {
+      "spring": 23,
+      "fall": 22
+    },
+    "2E08": {
+      "spring": 9,
+      "fall": 13
+    },
+    "3BIG": {
+      "spring": 13,
+      "fall": 14
+    },
+    "3C03": {
+      "spring": 15,
+      "fall": 17
+    },
+    "3C13": {
+      "spring": 17,
+      "fall": 16
+    },
+    "3E02": {
+      "spring": 13,
+      "fall": 14
+    },
+    "3E03": {
+      "spring": 24,
+      "fall": 23
+    },
+    "3E04": {
+      "spring": 22,
+      "fall": 25
+    },
+    "3E05": {
+      "spring": 24,
+      "fall": 24
+    },
+    "3E06": {
+      "spring": 22,
+      "fall": 22
+    },
+    "3E07": {
+      "spring": 21,
+      "fall": 21
+    },
+    "3E08": {
+      "spring": 23,
+      "fall": 21
+    },
+    "3E09": {
+      "spring": 20,
+      "fall": 19
+    },
+    "3E10": {
+      "spring": 21,
+      "fall": 24
+    },
+    "5C02": {
+      "spring": 21,
+      "fall": 24
+    },
+    "5C03": {
+      "spring": 19,
+      "fall": 19
+    },
+    "5C04": {
+      "spring": 22,
+      "fall": 23
+    },
+    "5C06": {
+      "spring": 23,
+      "fall": 24
+    },
+    "5C08": {
+      "spring": 27,
+      "fall": 27,
+      "year_round": 1
+    },
+    "5C09": {
+      "spring": 24,
+      "fall": 24
+    },
+    "5C10": {
+      "spring": 24,
+      "fall": 25
+    },
+    "5C11": {
+      "spring": 26,
+      "fall": 26
+    },
+    "5N01": {
+      "spring": 25,
+      "fall": 26
+    },
+    "5N02": {
+      "spring": 27,
+      "fall": 27
+    },
+    "5N03": {
+      "spring": 21,
+      "fall": 23
+    },
+    "5N04": {
+      "spring": 24,
+      "fall": 24
+    },
+    "5N05": {
+      "spring": 26,
+      "fall": 26
+    },
+    "5N06": {
+      "spring": 28,
+      "fall": 28
+    },
+    "5W01": {
+      "spring": 21,
+      "fall": 20
+    },
+    "5W02": {
+      "spring": 17,
+      "fall": 17
+    },
+    "5W03": {
+      "spring": 22,
+      "fall": 24
+    },
+    "5W04": {
+      "spring": 15,
+      "fall": 16
+    },
+    "5W05": {
+      "spring": 23,
+      "fall": 25
+    },
+    "5W06": {
+      "spring": 11,
+      "fall": 13
+    },
+    "5W07": {
+      "spring": 21,
+      "fall": 19
+    },
+    "5W08": {
+      "spring": 21,
+      "fall": 21
+    },
+    "5W09": {
+      "spring": 20,
+      "fall": 21
+    },
+    "5W10": {
+      "spring": 15,
+      "fall": 17
+    },
+    "6C08": {
+      "spring": 3,
+      "fall": 2
+    },
+    "6C09": {
+      "spring": 18,
+      "fall": 18
+    },
+    "6C10": {
+      "spring": 18,
+      "fall": 19
+    },
+    "6C11": {
+      "spring": 20,
+      "fall": 20
+    },
+    "B1C16": {
+      "spring": 16,
+      "fall": 16
+    },
+    "B1E04": {
+      "spring": 19,
+      "fall": 16
+    },
+    "B1W01": {
+      "spring": 15,
+      "fall": 15
+    },
+    "B1W02": {
+      "spring": 20,
+      "fall": 18
+    },
+    "B2N02": {
+      "spring": 7,
+      "fall": 6
+    }
+  }
+}

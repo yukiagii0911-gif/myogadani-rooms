@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="theme-color" content="#FAF6F0">
+<title>キャリブレーション</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="cal-head">
+  <div class="hd-title">教室キャリブレーション</div>
+  <button class="hd-export" id="btn-export">JSONコピー</button>
+</header>
+
+<div class="floor-tabs" id="floor-tabs"></div>
+
+<section class="image-section">
+  <div class="image-wrap" id="image-wrap">
+    <div class="image-empty" id="image-empty">
+      <p id="image-empty-msg">読み込み中…</p>
+      <div class="bg-choices">
+        <input type="file" id="image-input" accept="image/*" capture="environment">
+        <label for="image-input" class="upload-btn">画像を上書き</label>
+      </div>
+    </div>
+    <svg id="overlay" class="overlay" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+</section>
+
+<section class="active-room">
+  <div class="ar-name" id="ar-name">教室を選んで →</div>
+  <div class="ar-status" id="ar-status">タップで配置</div>
+</section>
+
+<section class="adjusters" id="adjusters" hidden>
+  <div class="adj-row">
+    <label>幅 <input type="range" id="adj-w" min="20" max="400" step="1"></label>
+    <span class="adj-val" id="val-w">60</span>
+  </div>
+  <div class="adj-row">
+    <label>高さ <input type="range" id="adj-h" min="20" max="400" step="1"></label>
+    <span class="adj-val" id="val-h">40</span>
+  </div>
+  <div class="adj-row">
+    <label>角度 <input type="range" id="adj-angle" min="-90" max="90" step="1"></label>
+    <span class="adj-val" id="val-angle">0°</span>
+  </div>
+  <div class="quick-rotate">
+    <button data-rot="-90">↺ 90°</button>
+    <button data-rot="-15">↺ 15°</button>
+    <button data-rot="-5">↺ 5°</button>
+    <button data-rot="0">↺ 0°</button>
+    <button data-rot="5">↻ 5°</button>
+    <button data-rot="15">↻ 15°</button>
+    <button data-rot="90">↻ 90°</button>
+  </div>
+  <div class="action-row">
+    <button id="btn-delete">削除</button>
+    <button id="btn-next" class="primary">次の教室 →</button>
+  </div>
+</section>
+
+<aside class="room-list">
+  <div class="rl-head">
+    <span>教室一覧</span>
+    <button id="btn-add-custom" class="rl-add">+ 追加</button>
+  </div>
+  <ul id="room-list"></ul>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
