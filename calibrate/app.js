@@ -1,11 +1,10 @@
-// === キャリブレーションツール ===
-// 各階のフロアプラン画像を背景にして、教室の位置・サイズ・角度をタップ＆ドラッグで設定
-// 結果は localStorage に保存 + JSONエクスポート
+// === キャリブレーションツール (Konva版) ===
+// 各階の外形を背景に、教室矩形を Konva Stage に配置・編集
+// Transformer で隅ドラッグ・回転ハンドル付き
 
 const FLOORS = ["-1", "1", "2", "3", "5", "6"];
 const FLOOR_LABELS = { "-1": "B1", "1": "1F", "2": "2F", "3": "3F", "5": "5F", "6": "6F" };
 
-// 各階のデフォルト教室リスト（rooms.jsonに無いものも含む実物に合わせたリスト）
 const FLOOR_ROOMS = {
   "-1": ["B1C16", "B1E04", "B1W01", "B1W02"],
   "1": ["1W01"],
@@ -28,83 +27,45 @@ const FLOOR_ROOMS = {
 };
 
 const STORAGE_KEY = "myogadani-calibration-v1";
-const DEFAULT_ROOM_SIZE = { w: 60, h: 40 };
+const DEFAULT_ROOM = { w: 60, h: 40, angle: 0 };
 
 const state = {
   floor: "5",
   activeRoom: null,
   data: loadData(),
-  dragRoom: null,
-  dragStart: null,
-  imgNatural: { w: 0, h: 0 },
+  viewBox: null,
+  stage: null,
+  bgLayer: null,
+  roomLayer: null,
+  transformer: null,
+  selectedNode: null,
+  outlineImage: null,
 };
 
-// 初回起動時、加山さんが既に配置した B1・1F のデータを seed.json から読込
-// (友達が初めて開いたとき、既に出来てる分が見える状態にする)
-// 既存の自分の編集データは上書きしない (各階の rooms が空っぽなときだけ seed を当てる)
-async function loadSeedIfNeeded() {
-  try {
-    const res = await fetch("./seed.json", { cache: "no-cache" });
-    if (!res.ok) return;
-    const seed = await res.json();
-    let updated = false;
-    for (const [floor, data] of Object.entries(seed)) {
-      const cur = state.data[floor];
-      const curRoomCount = cur && cur.rooms ? Object.keys(cur.rooms).length : 0;
-      if (curRoomCount === 0) {
-        state.data[floor] = state.data[floor] || { customRooms: [] };
-        state.data[floor].rooms = data.rooms;
-        updated = true;
-      }
-    }
-    if (updated) {
-      saveData();
-      renderAll();
-    }
-  } catch {}
-}
-
 function loadData() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
+  catch { return {}; }
 }
-
-function saveData() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
-}
+function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data)); }
 
 function ensureFloor(f) {
-  if (!state.data[f]) state.data[f] = { imageDataUrl: null, rooms: {}, customRooms: [] };
+  if (!state.data[f]) state.data[f] = { rooms: {}, customRooms: [] };
   if (!state.data[f].rooms) state.data[f].rooms = {};
   if (!state.data[f].customRooms) state.data[f].customRooms = [];
   return state.data[f];
 }
 
 function getFloorRoomList(f) {
-  const base = FLOOR_ROOMS[f] || [];
-  const custom = ensureFloor(f).customRooms || [];
-  return [...base, ...custom];
+  return [...(FLOOR_ROOMS[f] || []), ...(ensureFloor(f).customRooms || [])];
 }
 
-// === DOM参照 ===
 const $ = (id) => document.getElementById(id);
-const imageWrap = $("image-wrap");
-const imageEmpty = $("image-empty");
-const overlay = $("overlay");
 const floorTabs = $("floor-tabs");
 const roomList = $("room-list");
 const adjusters = $("adjusters");
 const arName = $("ar-name");
 const arStatus = $("ar-status");
-const adjW = $("adj-w");
-const adjH = $("adj-h");
-const adjAngle = $("adj-angle");
-const valW = $("val-w");
-const valH = $("val-h");
-const valAngle = $("val-angle");
+const imageEmpty = $("image-empty");
 const toast = $("toast");
 
 // === Floor tabs ===
@@ -116,136 +77,304 @@ function renderFloorTabs() {
     return `<button class="floor-tab${on}" data-floor="${f}">${FLOOR_LABELS[f]}<span class="done-count">${done}/${total}</span></button>`;
   }).join("");
 }
-
-floorTabs.addEventListener("click", (e) => {
+floorTabs.addEventListener("click", async (e) => {
   const t = e.target.closest("[data-floor]");
   if (!t) return;
   state.floor = t.dataset.floor;
   state.activeRoom = null;
-  renderAll();
+  state.selectedNode = null;
+  await renderAll();
 });
 
-// === Image upload ===
-$("image-input").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const f = ensureFloor(state.floor);
-    f.imageDataUrl = reader.result;
-    saveData();
-    renderImage();
-  };
-  reader.readAsDataURL(file);
-});
-
-
-async function renderImage() {
-  const f = ensureFloor(state.floor);
-  // 古いimg/svg要素を削除
-  imageWrap.querySelectorAll("img, .bg-svg").forEach((el) => el.remove());
-
-  // 1. ユーザーアップロード画像があればそれを使用
-  if (f.imageDataUrl) {
-    return renderImageFromUrl(f.imageDataUrl);
-  }
-
-  // 2. 全階共通の外形SVGを背景に使用
-  try {
-    const res = await fetch(`./outlines/outline.svg`);
-    if (res.ok) {
-      const svgText = await res.text();
-      return renderOutlineSvg(svgText);
-    }
-  } catch {}
-
-  // 3. 外形がなければエラー表示
-  imageEmpty.style.display = "block";
-  $("image-empty-msg").textContent = `外形が読み込めません`;
-  overlay.setAttribute("viewBox", "0 0 100 100");
-}
-
-function renderImageFromUrl(url) {
-  imageEmpty.style.display = "none";
-  const img = document.createElement("img");
-  img.src = url;
-  img.onload = () => {
-    state.imgNatural = { w: img.naturalWidth, h: img.naturalHeight };
-    overlay.setAttribute("viewBox", `0 0 ${img.naturalWidth} ${img.naturalHeight}`);
-    renderOverlay();
-  };
-  // overlay の前に挿入して教室が前面に出るようにする
-  imageWrap.insertBefore(img, overlay);
-}
-
-function renderOutlineSvg(svgText) {
-  imageEmpty.style.display = "none";
+// === 外形SVGロード ===
+async function loadOutlineSvg() {
+  const res = await fetch("./outlines/outline.svg");
+  if (!res.ok) throw new Error("外形SVG読込失敗");
+  const svgText = await res.text();
+  // viewBox を取り出す
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, "image/svg+xml");
   const srcSvg = doc.querySelector("svg");
   const vb = srcSvg.getAttribute("viewBox").split(/\s+/).map(Number);
-  state.imgNatural = { w: vb[2], h: vb[3], vbX: vb[0], vbY: vb[1] };
-  const wrapper = document.createElement("div");
-  wrapper.className = "bg-svg";
-  wrapper.innerHTML = svgText;
-  // overlay より前に挿入 → 教室は前面表示
-  imageWrap.insertBefore(wrapper, overlay);
-  overlay.setAttribute("viewBox", `${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}`);
-  renderOverlay();
+  // Image オブジェクトとして読み込む
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgText)));
+  });
+  return { img, vb };
 }
 
-// === Overlay rendering ===
-// 矩形はrotateするが、教室名ラベルは常に水平を保つ（2段グループ構造）
-function renderOverlay() {
-  const f = ensureFloor(state.floor);
-  let html = "";
-  for (const [name, pos] of Object.entries(f.rooms)) {
-    const cls = name === state.activeRoom ? "room-cell active" : "room-cell";
-    const cx = pos.x + pos.w / 2;
-    const cy = pos.y + pos.h / 2;
-    const rotateTransform = pos.angle ? ` transform="rotate(${pos.angle} ${cx} ${cy})"` : "";
-    html += `
-      <g class="room-group" data-name="${name}">
-        <g${rotateTransform}>
-          <rect class="${cls}" x="${pos.x}" y="${pos.y}" width="${pos.w}" height="${pos.h}" rx="3" />
-        </g>
-        <text class="room-label" x="${cx}" y="${cy + 4}" text-anchor="middle">${name}</text>
-      </g>
-    `;
+// === Stage 初期化 ===
+async function initStage() {
+  imageEmpty.hidden = true;
+  // 既存ステージを破棄
+  if (state.stage) { state.stage.destroy(); state.stage = null; }
+
+  try {
+    const { img, vb } = await loadOutlineSvg();
+    state.viewBox = { x: vb[0], y: vb[1], w: vb[2], h: vb[3] };
+    state.outlineImage = img;
+  } catch (e) {
+    imageEmpty.hidden = false;
+    $("image-empty-msg").textContent = "外形読み込み失敗";
+    return;
   }
-  overlay.innerHTML = html;
+
+  const container = $("konva-container");
+  const containerRect = container.getBoundingClientRect();
+
+  // Stage は viewBox のサイズに合わせる。CSS で見た目を 100% にする
+  const stage = new Konva.Stage({
+    container: "konva-container",
+    width: state.viewBox.w,
+    height: state.viewBox.h,
+  });
+
+  // Stage を CSS で容器に fit-contain させる
+  fitStageToContainer(stage, container);
+  window.addEventListener("resize", () => fitStageToContainer(stage, container));
+
+  // 背景レイヤ (外形)
+  const bgLayer = new Konva.Layer({ listening: false });
+  const bgImg = new Konva.Image({
+    x: 0,
+    y: 0,
+    width: state.viewBox.w,
+    height: state.viewBox.h,
+    image: state.outlineImage,
+  });
+  bgLayer.add(bgImg);
+  stage.add(bgLayer);
+
+  // 教室レイヤ
+  const roomLayer = new Konva.Layer();
+  stage.add(roomLayer);
+
+  // Transformer (選択中の教室につける)
+  const transformer = new Konva.Transformer({
+    rotateEnabled: true,
+    enabledAnchors: [
+      "top-left", "top-center", "top-right",
+      "middle-left", "middle-right",
+      "bottom-left", "bottom-center", "bottom-right",
+    ],
+    rotationSnaps: [0, 5, 10, 15, 20, 25, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, -5, -10, -15, -20, -25, -30, -45, -60, -75, -90, -105, -120, -135, -150, -165],
+    rotationSnapTolerance: 4,
+    borderStroke: "#5c9fd0",
+    borderStrokeWidth: 2,
+    anchorStroke: "#5c9fd0",
+    anchorFill: "#fff",
+    anchorSize: 12,
+    anchorCornerRadius: 6,
+    keepRatio: false,
+  });
+  roomLayer.add(transformer);
+
+  // Stage クリックで新規配置 or 選択解除
+  stage.on("click tap", (e) => {
+    if (e.target === stage || e.target.getClassName() === "Image") {
+      // 背景タップ
+      if (state.activeRoom) {
+        const f = ensureFloor(state.floor);
+        if (!f.rooms[state.activeRoom]) {
+          // 新規配置 (タップ位置を中心に)
+          const pos = stage.getPointerPosition();
+          const stagePos = {
+            x: (pos.x - stage.x()) / stage.scaleX(),
+            y: (pos.y - stage.y()) / stage.scaleY(),
+          };
+          const w = DEFAULT_ROOM.w, h = DEFAULT_ROOM.h;
+          f.rooms[state.activeRoom] = {
+            x: Math.round(stagePos.x - w / 2),
+            y: Math.round(stagePos.y - h / 2),
+            w, h, angle: 0,
+          };
+          saveData();
+          renderRooms();
+          renderActive();
+          renderRoomList();
+          renderFloorTabs();
+          showToast(`${state.activeRoom} 配置`);
+          selectRoom(state.activeRoom);
+        } else {
+          // 既配置 → 選択解除
+          deselectRoom();
+        }
+      }
+    }
+  });
+
+  state.stage = stage;
+  state.bgLayer = bgLayer;
+  state.roomLayer = roomLayer;
+  state.transformer = transformer;
+
+  renderRooms();
 }
 
-// === Active room ===
-function setActiveRoom(name) {
+function fitStageToContainer(stage, container) {
+  const rect = container.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return;
+  const sx = rect.width / state.viewBox.w;
+  const sy = rect.height / state.viewBox.h;
+  const scale = Math.min(sx, sy);
+  const w = state.viewBox.w * scale;
+  const h = state.viewBox.h * scale;
+  const x = (rect.width - w) / 2;
+  const y = (rect.height - h) / 2;
+  stage.scale({ x: scale, y: scale });
+  stage.position({ x, y });
+  stage.width(rect.width);
+  stage.height(rect.height);
+  stage.batchDraw();
+}
+
+// === 教室レンダ ===
+function renderRooms() {
+  if (!state.roomLayer) return;
+  state.transformer.nodes([]);
+  // 既存ノードを削除 (Transformer 以外)
+  state.roomLayer.find("Group, Text").forEach((n) => n.destroy());
+  state.selectedNode = null;
+
+  const f = ensureFloor(state.floor);
+  // viewBox オフセット
+  const ox = state.viewBox.x;
+  const oy = state.viewBox.y;
+
+  for (const [name, pos] of Object.entries(f.rooms)) {
+    const cx = (pos.x - ox) + pos.w / 2;
+    const cy = (pos.y - oy) + pos.h / 2;
+    // 矩形 (回転対応)
+    const rect = new Konva.Rect({
+      x: cx,
+      y: cy,
+      width: pos.w,
+      height: pos.h,
+      offsetX: pos.w / 2,
+      offsetY: pos.h / 2,
+      rotation: pos.angle || 0,
+      fill: "rgba(178, 242, 187, 0.85)",
+      stroke: "#2e6b3a",
+      strokeWidth: 1.5,
+      cornerRadius: 4,
+      draggable: true,
+      name: "room",
+    });
+    rect.setAttr("roomName", name);
+    // ラベル (回転しない・中央に)
+    const label = new Konva.Text({
+      text: name,
+      fontSize: 11,
+      fontFamily: "system-ui, -apple-system, 'Hiragino Sans', sans-serif",
+      fontStyle: "bold",
+      fill: "#3a332d",
+      stroke: "#ffffff",
+      strokeWidth: 3,
+      fillAfterStrokeEnabled: true,
+      listening: false,
+    });
+    label.x(cx - label.width() / 2);
+    label.y(cy - label.height() / 2);
+    label.setAttr("forRoom", name);
+
+    rect.on("click tap", (e) => {
+      e.cancelBubble = true;
+      selectRoom(name);
+    });
+    rect.on("dragmove", () => {
+      label.x(rect.x() - label.width() / 2);
+      label.y(rect.y() - label.height() / 2);
+    });
+    rect.on("transform", () => {
+      // Transformer はスケールで変形する → 実寸 width/height に反映してスケールをリセット
+      const sx = rect.scaleX();
+      const sy = rect.scaleY();
+      if (Math.abs(sx - 1) > 0.001 || Math.abs(sy - 1) > 0.001) {
+        const nw = Math.max(10, rect.width() * sx);
+        const nh = Math.max(10, rect.height() * sy);
+        rect.width(nw);
+        rect.height(nh);
+        rect.offsetX(nw / 2);
+        rect.offsetY(nh / 2);
+        rect.scaleX(1);
+        rect.scaleY(1);
+      }
+      label.x(rect.x() - label.width() / 2);
+      label.y(rect.y() - label.height() / 2);
+    });
+    rect.on("dragend transformend", () => {
+      // データに反映
+      const d = ensureFloor(state.floor);
+      d.rooms[name] = {
+        x: Math.round(rect.x() - rect.width() / 2 + ox),
+        y: Math.round(rect.y() - rect.height() / 2 + oy),
+        w: Math.round(rect.width()),
+        h: Math.round(rect.height()),
+        angle: Math.round(rect.rotation() * 10) / 10,
+      };
+      saveData();
+    });
+
+    state.roomLayer.add(rect);
+    state.roomLayer.add(label);
+  }
+  state.roomLayer.batchDraw();
+
+  // 選択状態を復元
+  if (state.activeRoom) {
+    selectRoom(state.activeRoom);
+  }
+}
+
+function selectRoom(name) {
   state.activeRoom = name;
+  const rect = state.roomLayer.findOne((n) => n.getAttr("roomName") === name);
+  if (rect) {
+    state.transformer.nodes([rect]);
+    state.selectedNode = rect;
+    rect.moveToTop();
+    // ラベルを上に持ってくる
+    state.roomLayer.find("Text").forEach((t) => {
+      if (t.getAttr("forRoom") === name) t.moveToTop();
+    });
+    state.roomLayer.add(state.transformer);
+    state.transformer.moveToTop();
+  } else {
+    state.transformer.nodes([]);
+    state.selectedNode = null;
+  }
+  state.roomLayer.batchDraw();
   renderActive();
-  renderOverlay();
+  renderRoomList();
+}
+
+function deselectRoom() {
+  state.activeRoom = null;
+  state.transformer.nodes([]);
+  state.selectedNode = null;
+  state.roomLayer.batchDraw();
+  renderActive();
   renderRoomList();
 }
 
 function renderActive() {
   if (!state.activeRoom) {
-    arName.textContent = "教室を選んでください ↓";
+    arName.textContent = "教室を選んで →";
     arStatus.textContent = "下のリストからタップ";
     adjusters.hidden = true;
-    overlay.classList.remove("placing");
     return;
   }
   arName.textContent = state.activeRoom;
   const f = ensureFloor(state.floor);
-  const pos = f.rooms[state.activeRoom];
-  if (!pos) {
-    arStatus.textContent = "画像をタップして配置 →";
-    adjusters.hidden = true;
-    overlay.classList.add("placing");
-  } else {
-    arStatus.textContent = "ドラッグで移動・スライダーで調整";
+  if (f.rooms[state.activeRoom]) {
+    arStatus.textContent = "ハンドルで変形・移動";
     adjusters.hidden = false;
-    overlay.classList.remove("placing");
-    adjW.value = pos.w; valW.textContent = pos.w;
-    adjH.value = pos.h; valH.textContent = pos.h;
-    adjAngle.value = pos.angle || 0; valAngle.textContent = `${pos.angle || 0}°`;
+  } else {
+    arStatus.textContent = "画像をタップで配置";
+    adjusters.hidden = true;
   }
 }
 
@@ -259,14 +388,13 @@ function renderRoomList() {
     return `<li data-name="${name}" class="${done ? "done" : ""} ${active ? "active" : ""}">${name}</li>`;
   }).join("");
 }
-
 roomList.addEventListener("click", (e) => {
   const li = e.target.closest("[data-name]");
   if (!li) return;
-  setActiveRoom(li.dataset.name);
+  selectRoom(li.dataset.name);
 });
 
-// === Add custom room ===
+// === 教室追加 ===
 $("btn-add-custom").addEventListener("click", () => {
   const name = prompt("教室名を入力 (例: 5C05)");
   if (!name) return;
@@ -274,139 +402,32 @@ $("btn-add-custom").addEventListener("click", () => {
   if (!f.customRooms.includes(name) && !(FLOOR_ROOMS[state.floor] || []).includes(name)) {
     f.customRooms.push(name);
   }
-  setActiveRoom(name);
   saveData();
   renderRoomList();
+  selectRoom(name);
 });
 
-// === Place / drag rectangle on overlay ===
-overlay.addEventListener("pointerdown", (e) => {
-  if (!state.activeRoom) return;
-  const f = ensureFloor(state.floor);
-  const pt = svgPoint(e);
-  const target = e.target.closest("g.room-group");
-
-  if (target && f.rooms[target.dataset.name]) {
-    // 既存の矩形をドラッグ開始
-    state.dragRoom = target.dataset.name;
-    state.dragStart = pt;
-    state.dragOrigin = { ...f.rooms[target.dataset.name] };
-    if (target.dataset.name !== state.activeRoom) {
-      setActiveRoom(target.dataset.name);
-    }
-    overlay.setPointerCapture(e.pointerId);
-  } else if (overlay.classList.contains("placing")) {
-    // 新規配置
-    const w = DEFAULT_ROOM_SIZE.w;
-    const h = DEFAULT_ROOM_SIZE.h;
-    f.rooms[state.activeRoom] = {
-      x: Math.round(pt.x - w / 2),
-      y: Math.round(pt.y - h / 2),
-      w, h, angle: 0,
-    };
-    saveData();
-    overlay.classList.remove("placing");
-    renderOverlay();
-    renderActive();
-    renderRoomList();
-    renderFloorTabs();
-    showToast(`${state.activeRoom} 配置`);
-  }
-});
-
-overlay.addEventListener("pointermove", (e) => {
-  if (!state.dragRoom) return;
-  const pt = svgPoint(e);
-  const dx = pt.x - state.dragStart.x;
-  const dy = pt.y - state.dragStart.y;
-  const f = ensureFloor(state.floor);
-  const pos = f.rooms[state.dragRoom];
-  pos.x = Math.round(state.dragOrigin.x + dx);
-  pos.y = Math.round(state.dragOrigin.y + dy);
-  renderOverlay();
-});
-
-overlay.addEventListener("pointerup", (e) => {
-  if (state.dragRoom) {
-    overlay.releasePointerCapture?.(e.pointerId);
-    state.dragRoom = null;
-    saveData();
-  }
-});
-
-function svgPoint(e) {
-  const rect = overlay.getBoundingClientRect();
-  const vb = overlay.viewBox.baseVal;
-  const scaleX = vb.width / rect.width;
-  const scaleY = vb.height / rect.height;
-  const scale = Math.max(scaleX, scaleY); // contain (meet)
-  const offsetX = (rect.width * scale - vb.width) / 2;
-  const offsetY = (rect.height * scale - vb.height) / 2;
-  return {
-    x: (e.clientX - rect.left) * scale - offsetX + vb.x,
-    y: (e.clientY - rect.top) * scale - offsetY + vb.y,
-  };
-}
-
-// === Adjusters ===
-adjW.addEventListener("input", () => updateActive("w", +adjW.value));
-adjH.addEventListener("input", () => updateActive("h", +adjH.value));
-adjAngle.addEventListener("input", () => updateActive("angle", +adjAngle.value));
-
-document.querySelectorAll(".quick-rotate button").forEach((b) => {
-  b.addEventListener("click", () => {
-    const f = ensureFloor(state.floor);
-    const pos = f.rooms[state.activeRoom];
-    if (!pos) return;
-    if (b.dataset.rot === "0") pos.angle = 0;
-    else pos.angle = (pos.angle || 0) + Number(b.dataset.rot);
-    pos.angle = Math.round(pos.angle);
-    saveData();
-    adjAngle.value = pos.angle;
-    valAngle.textContent = `${pos.angle}°`;
-    renderOverlay();
-  });
-});
-
-function updateActive(key, value) {
-  const f = ensureFloor(state.floor);
-  const pos = f.rooms[state.activeRoom];
-  if (!pos) return;
-  pos[key] = value;
-  saveData();
-  if (key === "w") valW.textContent = value;
-  if (key === "h") valH.textContent = value;
-  if (key === "angle") valAngle.textContent = `${value}°`;
-  renderOverlay();
-}
-
-// === Actions ===
+// === アクション ===
 $("btn-delete").addEventListener("click", () => {
   if (!state.activeRoom) return;
   const f = ensureFloor(state.floor);
   delete f.rooms[state.activeRoom];
   saveData();
-  renderOverlay();
-  renderRoomList();
+  renderRooms();
   renderActive();
+  renderRoomList();
   renderFloorTabs();
   showToast(`${state.activeRoom} 削除`);
 });
-
 $("btn-next").addEventListener("click", () => {
   const rooms = getFloorRoomList(state.floor);
   const f = ensureFloor(state.floor);
   const idx = rooms.indexOf(state.activeRoom);
-  // 次の未配置を探す
   for (let i = idx + 1; i < rooms.length; i++) {
-    if (!f.rooms[rooms[i]]) {
-      setActiveRoom(rooms[i]);
-      return;
-    }
+    if (!f.rooms[rooms[i]]) { selectRoom(rooms[i]); return; }
   }
-  // 全部終わってたら最初の未配置に
   const firstUnplaced = rooms.find((r) => !f.rooms[r]);
-  if (firstUnplaced) setActiveRoom(firstUnplaced);
+  if (firstUnplaced) selectRoom(firstUnplaced);
   else showToast("この階すべて配置済み");
 });
 
@@ -416,15 +437,13 @@ $("btn-export").addEventListener("click", async () => {
   const out = {
     floor: state.floor,
     floorLabel: FLOOR_LABELS[state.floor],
-    imageNatural: state.imgNatural,
     rooms: f.rooms,
   };
   const text = JSON.stringify(out, null, 2);
   try {
     await navigator.clipboard.writeText(text);
     showToast("JSON コピーしました");
-  } catch (err) {
-    // Fallback: prompt
+  } catch {
     prompt("コピー用JSON", text);
   }
 });
@@ -439,13 +458,40 @@ function showToast(msg) {
 }
 
 // === Render all ===
-function renderAll() {
+async function renderAll() {
   renderFloorTabs();
-  renderImage();
+  await initStage();
   renderRoomList();
   renderActive();
 }
 
+// === Seed 読込 ===
+async function loadSeedIfNeeded() {
+  try {
+    const res = await fetch("./seed.json", { cache: "no-cache" });
+    if (!res.ok) return;
+    const seed = await res.json();
+    let updated = false;
+    for (const [floor, data] of Object.entries(seed)) {
+      const cur = state.data[floor];
+      const curCount = cur && cur.rooms ? Object.keys(cur.rooms).length : 0;
+      if (curCount === 0) {
+        state.data[floor] = state.data[floor] || { customRooms: [] };
+        state.data[floor].rooms = data.rooms;
+        updated = true;
+      }
+    }
+    if (updated) {
+      saveData();
+      if (state.stage) renderRooms();
+      renderFloorTabs();
+      renderRoomList();
+    }
+  } catch {}
+}
+
 // Init
-renderAll();
-loadSeedIfNeeded();
+(async () => {
+  await renderAll();
+  await loadSeedIfNeeded();
+})();

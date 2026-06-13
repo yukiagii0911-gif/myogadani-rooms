@@ -155,6 +155,24 @@ button.upload-btn { font-family: inherit; }
   height: 100%;
   display: block;
 }
+
+/* Konva container */
+#konva-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+}
+#konva-container canvas {
+  touch-action: none !important;
+}
+.hint {
+  font-size: 11px;
+  color: var(--subtext);
+  margin: 8px 4px 0;
+  line-height: 1.5;
+}
 .overlay {
   position: absolute;
   top: 0; left: 0;
