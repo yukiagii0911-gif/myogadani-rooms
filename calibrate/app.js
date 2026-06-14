@@ -88,7 +88,7 @@ floorTabs.addEventListener("click", async (e) => {
 
 // === 外形SVGロード ===
 async function loadOutlineSvg() {
-  const res = await fetch("./outlines/outline.svg");
+  const res = await fetch("./outlines/outline.svg?v=" + Date.now(), { cache: "no-store" });
   if (!res.ok) throw new Error("外形SVG読込失敗");
   const svgText = await res.text();
   // viewBox を取り出す

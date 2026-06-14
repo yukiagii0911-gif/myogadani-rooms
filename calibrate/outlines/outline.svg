@@ -2,10 +2,5 @@
   <rect width="100%" height="100%" x="1407" y="149" fill="#faf6f0"/>
   <polygon
     points="1488,238 1562,259 1802,169 1831,274 1773,295 1830,412 1730,463 1711,425 1427,425"
-    fill="#fbf8f2"
-    stroke="#3a332d"
-    stroke-width="2.5"
-    stroke-linejoin="miter"
-    stroke-miterlimit="10"
-    stroke-linecap="square" />
+    fill="#ffffff" />
 </svg>
