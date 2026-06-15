@@ -364,7 +364,9 @@ async function addCourseToTimetable(course) {
       courseName: course.courseName,
       professor: course.professor || "",
     });
+    console.log("[timetable] saved", course.slotId, course.courseName);
   } catch (e) {
+    console.error("[timetable] save failed:", e?.code, e?.message, e);
     // ロールバック
     if (oldEntry) state.timetable[existingIdx] = oldEntry;
     else state.timetable = state.timetable.filter((t) => t.slotId !== course.slotId);
@@ -376,13 +378,20 @@ async function addCourseToTimetable(course) {
 async function removeCourseFromTimetable(slotId) {
   if (!state.user) return;
   if (!confirm("この授業を時間割から削除しますか？")) return;
+  // 楽観更新: 即UI反映
+  const oldEntry = state.timetable.find((t) => t.slotId === slotId);
+  state.timetable = state.timetable.filter((t) => t.slotId !== slotId);
+  renderTimetable();
+  // Firestore: バックグラウンドで削除
   const fb = window.__firebase;
   const { fns, db } = fb;
   try {
     await fns.deleteDoc(fns.doc(db, "users", state.user.uid, "timetable", slotId));
-    state.timetable = state.timetable.filter((t) => t.slotId !== slotId);
-    renderTimetable();
+    console.log("[timetable] deleted", slotId);
   } catch (e) {
+    console.error("[timetable] delete failed:", e?.code, e?.message, e);
+    if (oldEntry) state.timetable.push(oldEntry);
+    renderTimetable();
     alert("削除に失敗: " + (e?.code || e?.message || e));
   }
 }
@@ -391,12 +400,18 @@ async function loadTimetable() {
   if (!state.user) { state.timetable = []; return; }
   const fb = window.__firebase;
   const { fns, db } = fb;
-  const snap = await fns.getDocs(fns.collection(db, "users", state.user.uid, "timetable"));
-  state.timetable = [];
-  snap.forEach((doc) => {
-    const d = doc.data();
-    state.timetable.push({ slotId: doc.id, ...d });
-  });
+  try {
+    const snap = await fns.getDocs(fns.collection(db, "users", state.user.uid, "timetable"));
+    state.timetable = [];
+    snap.forEach((doc) => {
+      const d = doc.data();
+      state.timetable.push({ slotId: doc.id, ...d });
+    });
+    console.log("[timetable] loaded", state.timetable.length, "entries");
+  } catch (e) {
+    console.error("[timetable] load failed:", e?.code, e?.message);
+    state.timetable = [];
+  }
 }
 
 function renderTimetable() {
@@ -413,9 +428,8 @@ function renderTimetable() {
     { key: "spring", label: "春学期" },
     { key: "fall", label: "秋学期" },
   ];
-  // 登録済み学期がなければ春・秋 両方を空表で出す (空セルから登録できるように)
-  const filledSems = sems.filter((s) => state.timetable.some((t) => t.semester === s.key));
-  const showSems = filledSems.length ? sems : sems; // 常に両方表示
+  // 現在の学期のみ表示 (state.semester は時計から自動算出: 4-9月=spring, 10-3月=fall)
+  const showSems = sems.filter((s) => s.key === state.semester);
   let html = "";
   for (const sem of showSems) {
     const entries = state.timetable.filter((t) => t.semester === sem.key);
