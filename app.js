@@ -92,6 +92,24 @@ function bindTabs() {
   });
 }
 
+// Firestore 操作リトライ (unavailable / offline / network エラー時)
+async function withRetry(fn, retries = 3, delay = 700) {
+  try {
+    return await fn();
+  } catch (e) {
+    const code = e?.code || "";
+    const msg = e?.message || "";
+    const retryable = code === "unavailable" || code === "deadline-exceeded" ||
+                      msg.includes("offline") || msg.includes("network");
+    if (retries > 0 && retryable) {
+      console.warn(`[firestore] retry (${retries} left, ${delay}ms):`, code || msg);
+      await new Promise((r) => setTimeout(r, delay));
+      return withRetry(fn, retries - 1, Math.round(delay * 1.5));
+    }
+    throw e;
+  }
+}
+
 // === Firebase 認証 ===
 function bindAuth() {
   document.getElementById("btn-login-from-me")?.addEventListener("click", login);
@@ -152,39 +170,28 @@ async function logout() {
 }
 
 // Firestore: users/{uid} を取得 (初回ログインなら新規作成)
-async function loadUserProfile(retries = 2) {
+async function loadUserProfile() {
   const fb = window.__firebase;
   const { fns, db } = fb;
   const ref = fns.doc(db, "users", state.user.uid);
-  let snap;
-  try {
-    snap = await fns.getDoc(ref);
-  } catch (e) {
-    // unavailable は瞬間的なネットワーク/初期化エラー → 自動リトライ
-    if (retries > 0 && (e?.code === "unavailable" || e?.message?.includes("offline"))) {
-      console.warn("[userProfile] retrying after error:", e?.code);
-      await new Promise((r) => setTimeout(r, 800));
-      return loadUserProfile(retries - 1);
-    }
-    throw e;
-  }
+  const snap = await withRetry(() => fns.getDoc(ref));
   if (snap.exists()) {
     state.userProfile = snap.data();
     console.log("[userProfile] loaded", state.userProfile?.userName || "(no userName)");
-  } else {
-    // 初回: Google 表示名から仮ユーザー名を生成
-    const fallback = (state.user.displayName || "user").replace(/\s+/g, "").slice(0, 12) || "user";
-    const newDoc = {
-      displayName: state.user.displayName || "",
-      photoURL: state.user.photoURL || "",
-      email: state.user.email || "",
-      userName: null, // 未設定状態 (本人が設定するまで検索対象外)
-      fallbackName: fallback,
-      createdAt: fns.serverTimestamp(),
-    };
-    await fns.setDoc(ref, newDoc);
-    state.userProfile = newDoc;
+    return;
   }
+  // 初回: Google 表示名から仮ユーザー名を生成
+  const fallback = (state.user.displayName || "user").replace(/\s+/g, "").slice(0, 12) || "user";
+  const newDoc = {
+    displayName: state.user.displayName || "",
+    photoURL: state.user.photoURL || "",
+    email: state.user.email || "",
+    userName: null,
+    fallbackName: fallback,
+    createdAt: fns.serverTimestamp(),
+  };
+  await withRetry(() => fns.setDoc(ref, newDoc));
+  state.userProfile = newDoc;
 }
 
 async function editUserName() {
@@ -202,12 +209,12 @@ async function editUserName() {
   if (!state.userProfile) state.userProfile = {};
   state.userProfile.userName = trimmed;
   renderMeTab();
-  // Firestore: バックグラウンドで保存
+  // Firestore: バックグラウンドで保存 (リトライ付き)
   const fb = window.__firebase;
   const { fns, db } = fb;
   try {
     const nameRef = fns.doc(db, "userNames", trimmed.toLowerCase());
-    const nameSnap = await fns.getDoc(nameRef);
+    const nameSnap = await withRetry(() => fns.getDoc(nameRef));
     if (nameSnap.exists() && nameSnap.data().uid !== state.user.uid) {
       state.userProfile.userName = oldName;
       renderMeTab();
@@ -215,11 +222,13 @@ async function editUserName() {
       return;
     }
     if (oldName && oldName.toLowerCase() !== trimmed.toLowerCase()) {
-      try { await fns.deleteDoc(fns.doc(db, "userNames", oldName.toLowerCase())); } catch {}
+      try { await withRetry(() => fns.deleteDoc(fns.doc(db, "userNames", oldName.toLowerCase()))); } catch {}
     }
-    await fns.setDoc(nameRef, { uid: state.user.uid });
-    await fns.setDoc(fns.doc(db, "users", state.user.uid), { userName: trimmed }, { merge: true });
+    await withRetry(() => fns.setDoc(nameRef, { uid: state.user.uid }));
+    await withRetry(() => fns.setDoc(fns.doc(db, "users", state.user.uid), { userName: trimmed }, { merge: true }));
+    console.log("[userName] saved:", trimmed);
   } catch (e) {
+    console.error("[userName] save failed after retries:", e?.code, e?.message);
     state.userProfile.userName = oldName;
     renderMeTab();
     alert("ユーザー名の保存に失敗: " + (e?.code || e?.message || e));
@@ -363,11 +372,11 @@ async function addCourseToTimetable(course) {
   else state.timetable.push(entry);
   document.getElementById("course-picker").setAttribute("aria-hidden", "true");
   renderTimetable();
-  // Firestore 書き込み (バックグラウンド)
+  // Firestore 書き込み (リトライ付き)
   const fb = window.__firebase;
   const { fns, db } = fb;
   try {
-    await fns.setDoc(fns.doc(db, "users", state.user.uid, "timetable", course.slotId), {
+    await withRetry(() => fns.setDoc(fns.doc(db, "users", state.user.uid, "timetable", course.slotId), {
       semester: course.semester,
       day: course.day,
       period: course.period,
@@ -375,11 +384,10 @@ async function addCourseToTimetable(course) {
       courseId: course.courseId,
       courseName: course.courseName,
       professor: course.professor || "",
-    });
+    }));
     console.log("[timetable] saved", course.slotId, course.courseName);
   } catch (e) {
-    console.error("[timetable] save failed:", e?.code, e?.message, e);
-    // ロールバック
+    console.error("[timetable] save failed after retries:", e?.code, e?.message, e);
     if (oldEntry) state.timetable[existingIdx] = oldEntry;
     else state.timetable = state.timetable.filter((t) => t.slotId !== course.slotId);
     renderTimetable();
@@ -394,14 +402,14 @@ async function removeCourseFromTimetable(slotId) {
   const oldEntry = state.timetable.find((t) => t.slotId === slotId);
   state.timetable = state.timetable.filter((t) => t.slotId !== slotId);
   renderTimetable();
-  // Firestore: バックグラウンドで削除
+  // Firestore: バックグラウンドで削除 (リトライ付き)
   const fb = window.__firebase;
   const { fns, db } = fb;
   try {
-    await fns.deleteDoc(fns.doc(db, "users", state.user.uid, "timetable", slotId));
+    await withRetry(() => fns.deleteDoc(fns.doc(db, "users", state.user.uid, "timetable", slotId)));
     console.log("[timetable] deleted", slotId);
   } catch (e) {
-    console.error("[timetable] delete failed:", e?.code, e?.message, e);
+    console.error("[timetable] delete failed after retries:", e?.code, e?.message, e);
     if (oldEntry) state.timetable.push(oldEntry);
     renderTimetable();
     alert("削除に失敗: " + (e?.code || e?.message || e));
@@ -413,7 +421,7 @@ async function loadTimetable() {
   const fb = window.__firebase;
   const { fns, db } = fb;
   try {
-    const snap = await fns.getDocs(fns.collection(db, "users", state.user.uid, "timetable"));
+    const snap = await withRetry(() => fns.getDocs(fns.collection(db, "users", state.user.uid, "timetable")));
     state.timetable = [];
     snap.forEach((doc) => {
       const d = doc.data();
@@ -421,7 +429,7 @@ async function loadTimetable() {
     });
     console.log("[timetable] loaded", state.timetable.length, "entries");
   } catch (e) {
-    console.error("[timetable] load failed:", e?.code, e?.message);
+    console.error("[timetable] load failed after retries:", e?.code, e?.message);
     state.timetable = [];
   }
 }
