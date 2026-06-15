@@ -60,6 +60,7 @@ const state = {
 
 let SCHEDULE = null;
 let ROOMS = null;
+let ALL_COURSES = []; // 全コースをフラット化 [{slotId, semester, day, period, room, courseId, courseName, professor}]
 
 // === 初期化 ===
 async function init() {
@@ -69,6 +70,7 @@ async function init() {
   bindEvents();
   bindTabs();
   bindAuth();
+  bindCourseSearch();
   initAuth();
   render();
   renderMeTab();
@@ -115,10 +117,10 @@ function initAuth() {
         renderMeTab();
         renderFriendsTab();
         try {
-          await loadUserProfile();
+          await Promise.all([loadUserProfile(), loadTimetable()]);
           renderMeTab();
         } catch (e) {
-          console.warn("loadUserProfile error:", e?.code || e?.message || e);
+          console.warn("Firestore load error:", e?.code || e?.message || e);
           state.userProfile = null;
         }
       } else {
@@ -225,6 +227,7 @@ function renderMeTab() {
     document.getElementById("me-displayname").textContent = state.user.displayName || "";
     const uname = state.userProfile?.userName;
     document.getElementById("me-username").textContent = uname ? `@${uname}` : "(ユーザー名未設定)";
+    renderTimetable();
   } else {
     gate.hidden = false;
     body.hidden = true;
@@ -252,6 +255,153 @@ function renderFriendsTab() {
   }
 }
 
+// === コース検索シート ===
+function bindCourseSearch() {
+  document.getElementById("btn-add-course")?.addEventListener("click", openCoursePicker);
+  const input = document.getElementById("course-search-input");
+  if (input) {
+    let timer = null;
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => renderCourseResults(input.value.trim()), 150);
+    });
+  }
+}
+
+function openCoursePicker() {
+  const sheet = document.getElementById("course-picker");
+  if (!sheet) return;
+  sheet.setAttribute("aria-hidden", "false");
+  const input = document.getElementById("course-search-input");
+  if (input) {
+    input.value = "";
+    renderCourseResults("");
+    setTimeout(() => input.focus(), 100);
+  }
+}
+
+function renderCourseResults(query) {
+  const ul = document.getElementById("course-results");
+  if (!ul) return;
+  if (!query) {
+    ul.innerHTML = '<li class="empty-state">コース名を入力してください</li>';
+    return;
+  }
+  const q = query.toLowerCase();
+  const hits = ALL_COURSES.filter((c) => c.courseName.toLowerCase().includes(q)).slice(0, 100);
+  if (!hits.length) {
+    ul.innerHTML = '<li class="empty-state">該当するコースがありません</li>';
+    return;
+  }
+  // 学期 → 曜日 → 時限 でソート
+  const dayOrder = { "月": 1, "火": 2, "水": 3, "木": 4, "金": 5, "土": 6 };
+  hits.sort((a, b) => {
+    if (a.semester !== b.semester) return a.semester === "spring" ? -1 : 1;
+    if (a.day !== b.day) return (dayOrder[a.day] || 9) - (dayOrder[b.day] || 9);
+    return a.period - b.period;
+  });
+  ul.innerHTML = hits.map((c, i) => {
+    const sem = c.semester === "spring" ? "春" : "秋";
+    return `<li data-idx="${i}">
+      <div class="course-name">${escapeHtml(c.courseName)}</div>
+      <div class="course-meta">
+        <span class="badge">${sem}${c.day}${c.period}</span>
+        <span class="badge">${c.room}</span>
+        ${escapeHtml((c.professor || "").slice(0, 40))}
+      </div>
+    </li>`;
+  }).join("");
+  // クリックで登録
+  ul.querySelectorAll("li[data-idx]").forEach((li) => {
+    li.addEventListener("click", () => {
+      const idx = Number(li.dataset.idx);
+      addCourseToTimetable(hits[idx]);
+    });
+  });
+}
+
+// === 時間割 CRUD ===
+async function addCourseToTimetable(course) {
+  if (!state.user) { alert("ログインが必要です"); return; }
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  try {
+    await fns.setDoc(fns.doc(db, "users", state.user.uid, "timetable", course.slotId), {
+      semester: course.semester,
+      day: course.day,
+      period: course.period,
+      room: course.room,
+      courseId: course.courseId,
+      courseName: course.courseName,
+      professor: course.professor || "",
+    });
+    // 楽観更新
+    const existing = state.timetable.findIndex((t) => t.slotId === course.slotId);
+    const entry = { ...course };
+    if (existing >= 0) state.timetable[existing] = entry;
+    else state.timetable.push(entry);
+    document.getElementById("course-picker").setAttribute("aria-hidden", "true");
+    renderTimetable();
+  } catch (e) {
+    alert("保存に失敗: " + (e?.code || e?.message || e));
+  }
+}
+
+async function removeCourseFromTimetable(slotId) {
+  if (!state.user) return;
+  if (!confirm("この授業を時間割から削除しますか？")) return;
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  try {
+    await fns.deleteDoc(fns.doc(db, "users", state.user.uid, "timetable", slotId));
+    state.timetable = state.timetable.filter((t) => t.slotId !== slotId);
+    renderTimetable();
+  } catch (e) {
+    alert("削除に失敗: " + (e?.code || e?.message || e));
+  }
+}
+
+async function loadTimetable() {
+  if (!state.user) { state.timetable = []; return; }
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  const snap = await fns.getDocs(fns.collection(db, "users", state.user.uid, "timetable"));
+  state.timetable = [];
+  snap.forEach((doc) => {
+    const d = doc.data();
+    state.timetable.push({ slotId: doc.id, ...d });
+  });
+}
+
+function renderTimetable() {
+  const ul = document.getElementById("timetable-list");
+  if (!ul) return;
+  if (!state.timetable.length) {
+    ul.innerHTML = '<li class="empty-state">まだ授業を登録していません</li>';
+    return;
+  }
+  const dayOrder = { "月": 1, "火": 2, "水": 3, "木": 4, "金": 5, "土": 6 };
+  const sorted = [...state.timetable].sort((a, b) => {
+    if (a.semester !== b.semester) return a.semester === "spring" ? -1 : 1;
+    if (a.day !== b.day) return (dayOrder[a.day] || 9) - (dayOrder[b.day] || 9);
+    return a.period - b.period;
+  });
+  ul.innerHTML = sorted.map((t) => {
+    const sem = t.semester === "spring" ? "春" : "秋";
+    return `<li>
+      <div class="tt-row">
+        <span class="tt-slot">${sem}${t.day}${t.period}</span>
+        <span class="tt-name">${escapeHtml(t.courseName)}</span>
+        <span class="tt-room">${t.room}</span>
+        <button class="tt-delete" data-slot="${t.slotId}">削除</button>
+      </div>
+    </li>`;
+  }).join("");
+  ul.querySelectorAll(".tt-delete").forEach((btn) => {
+    btn.addEventListener("click", () => removeCourseFromTimetable(btn.dataset.slot));
+  });
+}
+
 async function loadData() {
   const [s, r] = await Promise.all([
     fetch("./data/schedule.json").then((r) => r.json()),
@@ -260,6 +410,40 @@ async function loadData() {
   SCHEDULE = s;
   // B2 は表示対象から除外（加山さん指示）
   ROOMS = r.rooms.filter((room) => room.floor !== -2);
+  // 全コースをフラット化 (時間割登録の検索用)
+  buildAllCourses();
+}
+
+function buildAllCourses() {
+  const out = [];
+  const seen = new Set(); // courseId+semester+day+period+room で重複防止
+  for (const room of Object.keys(SCHEDULE.by_room)) {
+    const rdata = SCHEDULE.by_room[room];
+    for (const semester of Object.keys(rdata)) {
+      const sdata = rdata[semester];
+      for (const day of Object.keys(sdata)) {
+        const ddata = sdata[day];
+        for (const period of Object.keys(ddata)) {
+          for (const c of ddata[period]) {
+            const key = `${c.id}_${semester}_${day}_${period}_${room}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({
+              slotId: `${semester}_${day}_${period}`,
+              semester,
+              day,
+              period: Number(period),
+              room,
+              courseId: c.id,
+              courseName: c.name,
+              professor: c.professor,
+            });
+          }
+        }
+      }
+    }
+  }
+  ALL_COURSES = out;
 }
 
 function setNowState() {

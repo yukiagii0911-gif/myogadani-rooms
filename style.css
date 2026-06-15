@@ -987,3 +987,62 @@ button:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2p
   color: var(--subtext);
   font-size: 13px;
 }
+
+/* コース検索シート */
+.course-picker-sheet .sheet-body { max-height: 85vh; }
+.course-search { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.course-search input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 14px;
+  font-family: inherit;
+}
+.course-results {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.course-results li {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.course-results li:active { background: var(--bg); }
+.course-results .empty-state { cursor: default; color: var(--subtext); font-size: 12px; padding: 24px 16px; text-align: center; }
+.course-name { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+.course-meta { font-size: 11px; color: var(--subtext); }
+.course-meta .badge {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--bg);
+  border-radius: 4px;
+  margin-right: 4px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* 時間割アイテム */
+.tt-row { display: flex; align-items: center; gap: 8px; }
+.tt-slot {
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.tt-name { font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tt-room { font-size: 11px; color: var(--subtext); white-space: nowrap; }
+.tt-delete {
+  background: none;
+  border: none;
+  color: var(--subtext);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 11px;
+}
