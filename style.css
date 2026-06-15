@@ -1094,13 +1094,17 @@ button:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2p
   vertical-align: middle;
   padding: 2px !important;
   position: relative;
+  background: var(--card);
 }
 .tt-cell.tt-filled {
-  background: var(--free, #b2f2bb);
   cursor: pointer;
   font-weight: 700;
 }
-.tt-cell.tt-filled:active { opacity: 0.7; }
+.tt-cell.tt-empty {
+  background: var(--bg);
+  cursor: pointer;
+}
+.tt-cell:active { opacity: 0.7; }
 .tt-cell-name {
   font-size: 9.5px;
   line-height: 1.2;

@@ -176,6 +176,7 @@ async function loadUserProfile() {
 }
 
 async function editUserName() {
+  if (!state.user) { alert("ログインが必要です"); return; }
   const cur = state.userProfile?.userName || "";
   const next = prompt("ユーザー名を入力 (英数字とアンダースコア、3〜20文字)\n他の人があなたを検索するときに使う名前です", cur);
   if (next === null) return;
@@ -184,26 +185,33 @@ async function editUserName() {
     alert("3〜20文字の英数字とアンダースコアで指定してください");
     return;
   }
-  const fb = window.__firebase;
-  const { fns, db } = fb;
-  // ユニーク性チェック: userNames/{name} に他人がいないか
-  const nameRef = fns.doc(db, "userNames", trimmed.toLowerCase());
-  const nameSnap = await fns.getDoc(nameRef);
-  if (nameSnap.exists() && nameSnap.data().uid !== state.user.uid) {
-    alert("そのユーザー名は既に使われています");
-    return;
-  }
-  // 古い名前があれば削除
-  const oldName = state.userProfile?.userName;
-  if (oldName && oldName.toLowerCase() !== trimmed.toLowerCase()) {
-    try { await fns.deleteDoc(fns.doc(db, "userNames", oldName.toLowerCase())); } catch {}
-  }
-  // 新しい名前を予約 + プロフィール更新
-  await fns.setDoc(nameRef, { uid: state.user.uid });
-  await fns.setDoc(fns.doc(db, "users", state.user.uid), { userName: trimmed }, { merge: true });
+  // 楽観更新: 即UI反映 (Firestore の応答を待たない)
+  const oldName = state.userProfile?.userName || null;
   if (!state.userProfile) state.userProfile = {};
   state.userProfile.userName = trimmed;
   renderMeTab();
+  // Firestore: バックグラウンドで保存
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  try {
+    const nameRef = fns.doc(db, "userNames", trimmed.toLowerCase());
+    const nameSnap = await fns.getDoc(nameRef);
+    if (nameSnap.exists() && nameSnap.data().uid !== state.user.uid) {
+      state.userProfile.userName = oldName;
+      renderMeTab();
+      alert("そのユーザー名は既に使われています");
+      return;
+    }
+    if (oldName && oldName.toLowerCase() !== trimmed.toLowerCase()) {
+      try { await fns.deleteDoc(fns.doc(db, "userNames", oldName.toLowerCase())); } catch {}
+    }
+    await fns.setDoc(nameRef, { uid: state.user.uid });
+    await fns.setDoc(fns.doc(db, "users", state.user.uid), { userName: trimmed }, { merge: true });
+  } catch (e) {
+    state.userProfile.userName = oldName;
+    renderMeTab();
+    alert("ユーザー名の保存に失敗: " + (e?.code || e?.message || e));
+  }
 }
 
 // === マイタブ・友達タブの認証連動表示 ===
@@ -286,9 +294,12 @@ function openCoursePicker() {
   const sheet = document.getElementById("course-picker");
   if (!sheet) return;
   sheet.setAttribute("aria-hidden", "false");
+  const title = sheet.querySelector(".picker-title");
+  if (title) title.textContent = "時間割に追加";
   const input = document.getElementById("course-search-input");
   if (input) {
     input.value = "";
+    input.placeholder = "コース名で検索 (例: 民法)";
     renderCourseResults("");
     setTimeout(() => input.focus(), 100);
   }
@@ -402,10 +413,12 @@ function renderTimetable() {
     { key: "spring", label: "春学期" },
     { key: "fall", label: "秋学期" },
   ];
+  // 登録済み学期がなければ春・秋 両方を空表で出す (空セルから登録できるように)
+  const filledSems = sems.filter((s) => state.timetable.some((t) => t.semester === s.key));
+  const showSems = filledSems.length ? sems : sems; // 常に両方表示
   let html = "";
-  for (const sem of sems) {
+  for (const sem of showSems) {
     const entries = state.timetable.filter((t) => t.semester === sem.key);
-    if (!entries.length) continue;
     const cellMap = {};
     for (const e of entries) cellMap[`${e.day}_${e.period}`] = e;
     html += `<div class="tt-section">
@@ -419,16 +432,64 @@ function renderTimetable() {
               <div class="tt-cell-room">${e.room}</div>
             </td>`;
           }
-          return `<td class="tt-cell"></td>`;
+          return `<td class="tt-cell tt-empty" data-sem="${sem.key}" data-day="${d}" data-period="${p}"></td>`;
         }).join("")}</tr>`).join("")}
       </tbody></table>
     </div>`;
   }
   root.innerHTML = html;
-  // セルタップで削除 (確認ダイアログ経由)
+  // 埋まってるセルタップで削除
   root.querySelectorAll(".tt-filled").forEach((cell) => {
     cell.addEventListener("click", () => removeCourseFromTimetable(cell.dataset.slot));
   });
+  // 空セルタップ → その曜日・時限の該当授業を出す
+  root.querySelectorAll(".tt-empty").forEach((cell) => {
+    cell.addEventListener("click", () => {
+      openCoursePickerForSlot(cell.dataset.sem, cell.dataset.day, Number(cell.dataset.period));
+    });
+  });
+}
+
+// 特定スロット (学期・曜日・時限) 該当授業のみ出す
+function openCoursePickerForSlot(semester, day, period) {
+  const hits = ALL_COURSES.filter((c) => c.semester === semester && c.day === day && c.period === period);
+  const semLabel = semester === "spring" ? "春" : "秋";
+  const sheet = document.getElementById("course-picker");
+  if (!sheet) return;
+  sheet.setAttribute("aria-hidden", "false");
+  // タイトルとして検索ボックスに「春月2」のように初期値を表示しない方が良い
+  // 代わりにシートのタイトルを書き換え
+  const title = sheet.querySelector(".picker-title");
+  if (title) title.textContent = `${semLabel}${day}${period}限の授業`;
+  const input = document.getElementById("course-search-input");
+  if (input) {
+    input.value = "";
+    input.placeholder = `${semLabel}${day}${period}限から絞り込み (例: 民法)`;
+  }
+  // 結果を「該当授業」で固定描画
+  renderCourseResultsFromList(hits);
+}
+
+function renderCourseResultsFromList(hits) {
+  const ul = document.getElementById("course-results");
+  if (!ul) return;
+  if (!hits.length) {
+    ul.innerHTML = '<li class="empty-state">この時限に授業はありません</li>';
+    lastSearchHits = [];
+    return;
+  }
+  lastSearchHits = hits;
+  ul.innerHTML = hits.map((c, i) => {
+    const sem = c.semester === "spring" ? "春" : "秋";
+    return `<li><button type="button" class="course-result-btn" data-idx="${i}">
+      <div class="course-name">${escapeHtml(c.courseName)}</div>
+      <div class="course-meta">
+        <span class="badge">${sem}${c.day}${c.period}</span>
+        <span class="badge">${c.room}</span>
+        ${escapeHtml((c.professor || "").slice(0, 40))}
+      </div>
+    </button></li>`;
+  }).join("");
 }
 
 async function loadData() {
