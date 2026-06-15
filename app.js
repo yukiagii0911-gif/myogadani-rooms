@@ -256,6 +256,7 @@ function renderFriendsTab() {
 }
 
 // === コース検索シート ===
+let lastSearchHits = []; // event delegation 用に保持
 function bindCourseSearch() {
   document.getElementById("btn-add-course")?.addEventListener("click", openCoursePicker);
   const input = document.getElementById("course-search-input");
@@ -264,6 +265,17 @@ function bindCourseSearch() {
     input.addEventListener("input", () => {
       clearTimeout(timer);
       timer = setTimeout(() => renderCourseResults(input.value.trim()), 150);
+    });
+  }
+  // 結果リスト全体にデリゲート (個別バインドより堅牢)
+  const ul = document.getElementById("course-results");
+  if (ul) {
+    ul.addEventListener("click", (e) => {
+      const li = e.target.closest("li[data-idx]");
+      if (!li) return;
+      const idx = Number(li.dataset.idx);
+      const course = lastSearchHits[idx];
+      if (course) addCourseToTimetable(course);
     });
   }
 }
@@ -300,6 +312,7 @@ function renderCourseResults(query) {
     if (a.day !== b.day) return (dayOrder[a.day] || 9) - (dayOrder[b.day] || 9);
     return a.period - b.period;
   });
+  lastSearchHits = hits; // delegation で参照される
   ul.innerHTML = hits.map((c, i) => {
     const sem = c.semester === "spring" ? "春" : "秋";
     return `<li data-idx="${i}">
@@ -311,18 +324,20 @@ function renderCourseResults(query) {
       </div>
     </li>`;
   }).join("");
-  // クリックで登録
-  ul.querySelectorAll("li[data-idx]").forEach((li) => {
-    li.addEventListener("click", () => {
-      const idx = Number(li.dataset.idx);
-      addCourseToTimetable(hits[idx]);
-    });
-  });
 }
 
 // === 時間割 CRUD ===
 async function addCourseToTimetable(course) {
   if (!state.user) { alert("ログインが必要です"); return; }
+  // 楽観更新: 即UI反映 (Firestore 書き込み完了を待たない)
+  const existingIdx = state.timetable.findIndex((t) => t.slotId === course.slotId);
+  const oldEntry = existingIdx >= 0 ? state.timetable[existingIdx] : null;
+  const entry = { ...course };
+  if (existingIdx >= 0) state.timetable[existingIdx] = entry;
+  else state.timetable.push(entry);
+  document.getElementById("course-picker").setAttribute("aria-hidden", "true");
+  renderTimetable();
+  // Firestore 書き込み (バックグラウンド)
   const fb = window.__firebase;
   const { fns, db } = fb;
   try {
@@ -335,14 +350,11 @@ async function addCourseToTimetable(course) {
       courseName: course.courseName,
       professor: course.professor || "",
     });
-    // 楽観更新
-    const existing = state.timetable.findIndex((t) => t.slotId === course.slotId);
-    const entry = { ...course };
-    if (existing >= 0) state.timetable[existing] = entry;
-    else state.timetable.push(entry);
-    document.getElementById("course-picker").setAttribute("aria-hidden", "true");
-    renderTimetable();
   } catch (e) {
+    // ロールバック
+    if (oldEntry) state.timetable[existingIdx] = oldEntry;
+    else state.timetable = state.timetable.filter((t) => t.slotId !== course.slotId);
+    renderTimetable();
     alert("保存に失敗: " + (e?.code || e?.message || e));
   }
 }

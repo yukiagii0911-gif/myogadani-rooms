@@ -892,10 +892,14 @@ button:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2p
   background: none;
   border: none;
   color: var(--accent-deep, #5c9fd0);
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 8px 12px;
+  min-height: 36px;
+  border-radius: 6px;
 }
+.btn-text:active { background: var(--bg); }
 
 /* マイページ セクション (ユーザー名・時間割) */
 .me-section {
