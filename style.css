@@ -833,3 +833,150 @@ button:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2p
 @media (min-width: 720px) {
   .app-main { padding: 16px 24px 90px; }
 }
+
+/* ============== タブごとのメインビュー ============== */
+.app-main[data-tab-content="friends"],
+.app-main[data-tab-content="me"] {
+  padding: 16px 16px 90px;
+}
+.page-head { margin-bottom: 16px; }
+.page-title { font-size: 22px; font-weight: 700; margin: 0; }
+.page-sub { font-size: 12px; color: var(--subtext); margin: 4px 0 0; }
+
+/* 未ログイン状態 */
+.auth-gate {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px 16px;
+  text-align: center;
+  margin: 12px 0;
+}
+.auth-gate p { font-size: 13px; color: var(--subtext); margin: 0 0 16px; line-height: 1.6; }
+.btn-google {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: var(--text);
+  color: var(--bg);
+  border: none;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* マイページ プロフィール */
+.me-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.me-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg);
+  object-fit: cover;
+}
+.me-info { flex: 1; min-width: 0; }
+.me-displayname { font-size: 15px; font-weight: 700; }
+.me-username { font-size: 12px; color: var(--subtext); }
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--accent-deep, #5c9fd0);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+/* マイページ セクション (ユーザー名・時間割) */
+.me-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.me-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.me-section-hint { font-size: 11px; color: var(--subtext); margin: 4px 0 0; line-height: 1.5; }
+
+/* 時間割リスト */
+.timetable-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.timetable-list li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  margin-bottom: 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.timetable-list .empty-state { color: var(--subtext); font-size: 12px; background: none; }
+
+/* 友達タブ */
+.follow-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.follow-add input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 13px;
+  font-family: inherit;
+}
+.follow-add button {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--text);
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.friend-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.friend-item {
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.friend-item .avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+.friend-item .name { font-weight: 700; font-size: 14px; }
+.friend-item .shared-count { font-size: 12px; color: var(--accent-deep, #5c9fd0); font-weight: 700; }

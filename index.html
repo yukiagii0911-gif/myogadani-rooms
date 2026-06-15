@@ -23,7 +23,7 @@
   </div>
 </header>
 
-<main class="app-main">
+<main class="app-main" data-tab-content="rooms">
 
   <!-- 階ピル＋現在時刻表示 -->
   <section class="top-bar">
@@ -54,6 +54,68 @@
 
 </main>
 
+<!-- ============== 友達タブ ============== -->
+<main class="app-main tab-friends" data-tab-content="friends" hidden>
+  <section class="page-head">
+    <h1 class="page-title">友達</h1>
+    <p class="page-sub">フォロー中の人と共通授業</p>
+  </section>
+  <section class="auth-gate" id="friends-auth-gate">
+    <p>ログインすると友達の時間割と共通授業が見られます</p>
+    <button class="btn-google" id="btn-login-from-friends">
+      <span data-icon="account"></span>Google でログイン
+    </button>
+  </section>
+  <section class="friends-body" id="friends-body" hidden>
+    <div class="follow-add">
+      <input type="text" id="follow-input" placeholder="ユーザー名で検索" autocomplete="off">
+      <button id="btn-follow-search">追加</button>
+    </div>
+    <ul class="friend-list" id="friend-list">
+      <li class="empty-state">まだ誰もフォローしていません</li>
+    </ul>
+  </section>
+</main>
+
+<!-- ============== マイタブ ============== -->
+<main class="app-main tab-me" data-tab-content="me" hidden>
+  <section class="page-head">
+    <h1 class="page-title">マイ</h1>
+  </section>
+  <section class="auth-gate" id="me-auth-gate">
+    <p>ログインして自分の時間割を登録すると、共通授業を取ってる友達が見つけられます</p>
+    <button class="btn-google" id="btn-login-from-me">
+      <span data-icon="account"></span>Google でログイン
+    </button>
+  </section>
+  <section class="me-body" id="me-body" hidden>
+    <div class="me-profile">
+      <img class="me-avatar" id="me-avatar" alt="">
+      <div class="me-info">
+        <div class="me-displayname" id="me-displayname"></div>
+        <div class="me-username" id="me-username"></div>
+      </div>
+      <button class="btn-text" id="btn-logout">ログアウト</button>
+    </div>
+    <div class="me-section">
+      <div class="me-section-head">
+        <span>ユーザー名</span>
+        <button class="btn-text" id="btn-edit-username">変更</button>
+      </div>
+      <p class="me-section-hint" id="me-username-hint">他の人があなたをフォローするときに使う名前。一意である必要があります。</p>
+    </div>
+    <div class="me-section">
+      <div class="me-section-head">
+        <span>時間割</span>
+        <button class="btn-text" id="btn-add-course">＋追加</button>
+      </div>
+      <ul class="timetable-list" id="timetable-list">
+        <li class="empty-state">まだ授業を登録していません</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
 <!-- 詳細パネル（教室詳細） -->
 <aside class="sheet" id="detail-sheet" aria-hidden="true">
   <div class="sheet-backdrop" data-close-sheet="detail-sheet"></div>
@@ -76,7 +138,7 @@
   </div>
 </aside>
 
-<!-- フッターナビ -->
+<!-- フッターナビ (3タブ: 教室 / 友達 / マイ) -->
 <nav class="app-footer">
   <button class="foot-btn on" data-tab="rooms">
     <span data-icon="building"></span><span>教室</span>
@@ -84,14 +146,39 @@
   <button class="foot-btn" data-tab="friends">
     <span data-icon="account-plus"></span><span>友達</span>
   </button>
-  <button class="foot-btn" data-tab="notifications">
-    <span data-icon="bell"></span><span>通知</span>
-  </button>
   <button class="foot-btn" data-tab="me">
     <span data-icon="account"></span><span>マイ</span>
   </button>
 </nav>
 
-<script type="module" src="app.js"></script>
+<!-- Firebase SDK (v10 ESM) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCoJe4EJdZZeiBhAPP7RQ5OvQlqlKEREC0",
+    authDomain: "myogadani-room.firebaseapp.com",
+    projectId: "myogadani-room",
+    storageBucket: "myogadani-room.firebasestorage.app",
+    messagingSenderId: "147282304997",
+    appId: "1:147282304997:web:7b1f256f76613513e5990c",
+    measurementId: "G-77T9CM9PF6"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  // app.js から使えるよう window 経由で公開 (静的 import が一度しか使えないため)
+  window.__firebase = {
+    auth: getAuth(app),
+    db: getFirestore(app),
+    googleProvider: new GoogleAuthProvider(),
+    fns: { signInWithPopup, signOut, onAuthStateChanged, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp },
+  };
+  // 既に app.js がロード済みで初期化待ちなら通知
+  if (typeof window.__onFirebaseReady === "function") window.__onFirebaseReady();
+</script>
+
+<script type="module" src="app.js?v=20260615a"></script>
 </body>
 </html>

@@ -50,6 +50,11 @@ const state = {
   filter: "all",
   selectedRoom: null,
   myMarkers: loadMyMarkers(),
+  // Phase 2
+  user: null,          // { uid, displayName, photoURL, email } | null
+  userProfile: null,   // Firestore users/{uid} ドキュメント
+  timetable: [],       // [{semester, day, period, room, courseId, courseName}]
+  follows: [],         // [{uid, userName, displayName, photoURL}]
 };
 
 let SCHEDULE = null;
@@ -61,7 +66,168 @@ async function init() {
   await loadData();
   setNowState();
   bindEvents();
+  bindTabs();
+  bindAuth();
+  initAuth();
   render();
+  renderMeTab();
+  renderFriendsTab();
+}
+
+// === タブ切替 (教室 / 友達 / マイ) ===
+function bindTabs() {
+  const tabs = document.querySelectorAll(".foot-btn[data-tab]");
+  const contents = document.querySelectorAll("[data-tab-content]");
+  tabs.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      tabs.forEach((b) => b.classList.toggle("on", b === btn));
+      contents.forEach((c) => {
+        c.hidden = c.dataset.tabContent !== tab;
+      });
+    });
+  });
+}
+
+// === Firebase 認証 ===
+function bindAuth() {
+  document.getElementById("btn-login-from-me")?.addEventListener("click", login);
+  document.getElementById("btn-login-from-friends")?.addEventListener("click", login);
+  document.getElementById("btn-logout")?.addEventListener("click", logout);
+  document.getElementById("btn-edit-username")?.addEventListener("click", editUserName);
+}
+
+function initAuth() {
+  const ready = () => {
+    const fb = window.__firebase;
+    if (!fb) return;
+    fb.fns.onAuthStateChanged(fb.auth, async (user) => {
+      if (user) {
+        state.user = {
+          uid: user.uid,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          email: user.email,
+        };
+        try {
+          await loadUserProfile();
+        } catch (e) {
+          // Firestore 未作成・Rules 拒否などでも認証状態は維持する
+          console.warn("loadUserProfile error:", e?.code || e?.message || e);
+          state.userProfile = null;
+        }
+      } else {
+        state.user = null;
+        state.userProfile = null;
+      }
+      renderMeTab();
+      renderFriendsTab();
+    });
+  };
+  if (window.__firebase) ready();
+  else window.__onFirebaseReady = ready;
+}
+
+async function login() {
+  const fb = window.__firebase;
+  if (!fb) { alert("Firebase が読み込まれていません"); return; }
+  try {
+    await fb.fns.signInWithPopup(fb.auth, fb.googleProvider);
+  } catch (e) {
+    if (e.code !== "auth/popup-closed-by-user") {
+      alert("ログインに失敗: " + e.message);
+    }
+  }
+}
+
+async function logout() {
+  await window.__firebase.fns.signOut(window.__firebase.auth);
+}
+
+// Firestore: users/{uid} を取得 (初回ログインなら新規作成)
+async function loadUserProfile() {
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  const ref = fns.doc(db, "users", state.user.uid);
+  const snap = await fns.getDoc(ref);
+  if (snap.exists()) {
+    state.userProfile = snap.data();
+  } else {
+    // 初回: Google 表示名から仮ユーザー名を生成
+    const fallback = (state.user.displayName || "user").replace(/\s+/g, "").slice(0, 12) || "user";
+    const newDoc = {
+      displayName: state.user.displayName || "",
+      photoURL: state.user.photoURL || "",
+      email: state.user.email || "",
+      userName: null, // 未設定状態 (本人が設定するまで検索対象外)
+      fallbackName: fallback,
+      createdAt: fns.serverTimestamp(),
+    };
+    await fns.setDoc(ref, newDoc);
+    state.userProfile = newDoc;
+  }
+}
+
+async function editUserName() {
+  const cur = state.userProfile?.userName || "";
+  const next = prompt("ユーザー名を入力 (英数字とアンダースコア、3〜20文字)\n他の人があなたを検索するときに使う名前です", cur);
+  if (next === null) return;
+  const trimmed = next.trim();
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(trimmed)) {
+    alert("3〜20文字の英数字とアンダースコアで指定してください");
+    return;
+  }
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  // ユニーク性チェック: userNames/{name} に他人がいないか
+  const nameRef = fns.doc(db, "userNames", trimmed.toLowerCase());
+  const nameSnap = await fns.getDoc(nameRef);
+  if (nameSnap.exists() && nameSnap.data().uid !== state.user.uid) {
+    alert("そのユーザー名は既に使われています");
+    return;
+  }
+  // 古い名前があれば削除
+  const oldName = state.userProfile?.userName;
+  if (oldName && oldName.toLowerCase() !== trimmed.toLowerCase()) {
+    try { await fns.deleteDoc(fns.doc(db, "userNames", oldName.toLowerCase())); } catch {}
+  }
+  // 新しい名前を予約 + プロフィール更新
+  await fns.setDoc(nameRef, { uid: state.user.uid });
+  await fns.setDoc(fns.doc(db, "users", state.user.uid), { userName: trimmed }, { merge: true });
+  state.userProfile.userName = trimmed;
+  renderMeTab();
+}
+
+// === マイタブ・友達タブの認証連動表示 ===
+function renderMeTab() {
+  const gate = document.getElementById("me-auth-gate");
+  const body = document.getElementById("me-body");
+  if (!gate || !body) return;
+  if (state.user) {
+    gate.hidden = true;
+    body.hidden = false;
+    const avatar = document.getElementById("me-avatar");
+    if (avatar) avatar.src = state.user.photoURL || "";
+    document.getElementById("me-displayname").textContent = state.user.displayName || "";
+    const uname = state.userProfile?.userName;
+    document.getElementById("me-username").textContent = uname ? `@${uname}` : "(ユーザー名未設定)";
+  } else {
+    gate.hidden = false;
+    body.hidden = true;
+  }
+}
+
+function renderFriendsTab() {
+  const gate = document.getElementById("friends-auth-gate");
+  const body = document.getElementById("friends-body");
+  if (!gate || !body) return;
+  if (state.user) {
+    gate.hidden = true;
+    body.hidden = false;
+  } else {
+    gate.hidden = false;
+    body.hidden = true;
+  }
 }
 
 async function loadData() {
