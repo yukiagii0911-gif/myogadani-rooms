@@ -60,7 +60,10 @@
     <h1 class="page-title">友達</h1>
     <p class="page-sub">フォロー中の人と共通授業</p>
   </section>
-  <section class="auth-gate" id="friends-auth-gate">
+  <section class="auth-loading" id="friends-loading">
+    <p>読み込み中…</p>
+  </section>
+  <section class="auth-gate" id="friends-auth-gate" hidden>
     <p>ログインすると友達の時間割と共通授業が見られます</p>
     <button class="btn-google" id="btn-login-from-friends">
       <span data-icon="account"></span>Google でログイン
@@ -82,7 +85,10 @@
   <section class="page-head">
     <h1 class="page-title">マイ</h1>
   </section>
-  <section class="auth-gate" id="me-auth-gate">
+  <section class="auth-loading" id="me-loading">
+    <p>読み込み中…</p>
+  </section>
+  <section class="auth-gate" id="me-auth-gate" hidden>
     <p>ログインして自分の時間割を登録すると、共通授業を取ってる友達が見つけられます</p>
     <button class="btn-google" id="btn-login-from-me">
       <span data-icon="account"></span>Google でログイン
@@ -179,6 +185,6 @@
   if (typeof window.__onFirebaseReady === "function") window.__onFirebaseReady();
 </script>
 
-<script type="module" src="app.js?v=20260615a"></script>
+<script type="module" src="app.js?v=20260615b"></script>
 </body>
 </html>

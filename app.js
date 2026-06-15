@@ -51,6 +51,7 @@ const state = {
   selectedRoom: null,
   myMarkers: loadMyMarkers(),
   // Phase 2
+  authReady: false,    // Firebase Auth の初期判定が終わったか
   user: null,          // { uid, displayName, photoURL, email } | null
   userProfile: null,   // Firestore users/{uid} ドキュメント
   timetable: [],       // [{semester, day, period, room, courseId, courseName}]
@@ -102,6 +103,7 @@ function initAuth() {
     const fb = window.__firebase;
     if (!fb) return;
     fb.fns.onAuthStateChanged(fb.auth, async (user) => {
+      state.authReady = true;
       if (user) {
         state.user = {
           uid: user.uid,
@@ -109,19 +111,22 @@ function initAuth() {
           photoURL: user.photoURL,
           email: user.email,
         };
+        // Firestore 取得を待たずに先に基本情報を描画 (反応速度優先)
+        renderMeTab();
+        renderFriendsTab();
         try {
           await loadUserProfile();
+          renderMeTab();
         } catch (e) {
-          // Firestore 未作成・Rules 拒否などでも認証状態は維持する
           console.warn("loadUserProfile error:", e?.code || e?.message || e);
           state.userProfile = null;
         }
       } else {
         state.user = null;
         state.userProfile = null;
+        renderMeTab();
+        renderFriendsTab();
       }
-      renderMeTab();
-      renderFriendsTab();
     });
   };
   if (window.__firebase) ready();
@@ -199,10 +204,19 @@ async function editUserName() {
 }
 
 // === マイタブ・友達タブの認証連動表示 ===
+// 状態: 1) authReady=false → 読み込み中  2) user あり → 本体  3) user なし → ログインゲート
 function renderMeTab() {
+  const loading = document.getElementById("me-loading");
   const gate = document.getElementById("me-auth-gate");
   const body = document.getElementById("me-body");
   if (!gate || !body) return;
+  if (!state.authReady) {
+    if (loading) loading.hidden = false;
+    gate.hidden = true;
+    body.hidden = true;
+    return;
+  }
+  if (loading) loading.hidden = true;
   if (state.user) {
     gate.hidden = true;
     body.hidden = false;
@@ -218,9 +232,17 @@ function renderMeTab() {
 }
 
 function renderFriendsTab() {
+  const loading = document.getElementById("friends-loading");
   const gate = document.getElementById("friends-auth-gate");
   const body = document.getElementById("friends-body");
   if (!gate || !body) return;
+  if (!state.authReady) {
+    if (loading) loading.hidden = false;
+    gate.hidden = true;
+    body.hidden = true;
+    return;
+  }
+  if (loading) loading.hidden = true;
   if (state.user) {
     gate.hidden = true;
     body.hidden = false;
