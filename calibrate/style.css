@@ -24,13 +24,13 @@ html, body {
 }
 body {
   display: grid;
-  grid-template-rows: auto auto 1fr auto auto auto;
+  grid-template-rows: auto auto auto 1fr auto auto;
   grid-template-areas:
     "head"
+    "hint"
     "tabs"
     "image"
     "active"
-    "adj"
     "list";
   height: 100vh;
 }
@@ -56,6 +56,17 @@ body {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* Hint bar */
+.cal-hint {
+  grid-area: hint;
+  padding: 8px 16px;
+  background: #fff8e7;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.5;
 }
 
 /* Floor tabs */
@@ -94,7 +105,7 @@ body {
   position: relative;
   background: #ece4d5;
   overflow: hidden;
-  min-height: 220px;
+  min-height: 50vh;
 }
 .image-wrap {
   position: relative;
@@ -209,16 +220,33 @@ button.upload-btn { font-family: inherit; }
 /* Active room indicator */
 .active-room {
   grid-area: active;
-  padding: 10px 16px;
+  padding: 8px 16px;
   background: var(--card);
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
 }
-.ar-name { font-size: 18px; font-weight: 700; }
+.ar-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.ar-name { font-size: 16px; font-weight: 700; }
 .ar-status { font-size: 11px; color: var(--subtext); }
+.ar-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.ar-actions button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ar-actions button.primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
 
 /* Adjusters */
 .adjusters {
@@ -226,7 +254,7 @@ button.upload-btn { font-family: inherit; }
   padding: 10px 16px;
   background: var(--card);
   border-top: 1px solid var(--border);
-  max-height: 280px;
+  max-height: 120px;
   overflow-y: auto;
 }
 .adj-row {
@@ -299,7 +327,7 @@ button.upload-btn { font-family: inherit; }
   background: var(--card);
   border-top: 1px solid var(--border);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  max-height: 160px;
+  max-height: 120px;
   overflow-y: auto;
 }
 .rl-head {

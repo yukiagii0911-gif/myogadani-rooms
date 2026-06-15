@@ -12,8 +12,9 @@ const PERIOD_TIMES = {
   5: ["17:00", "18:40"],
   6: ["18:50", "20:30"],
 };
-const FLOORS = ["all", "B1", "1", "2", "3", "5", "6"];
-const FLOOR_LABELS = { all: "全階", B1: "B1", "1": "1F", "2": "2F", "3": "3F", "5": "5F", "6": "6F" };
+// 6F は当面除外 (必要なら "6" と "6F" ラベルを再追加)
+const FLOORS = ["all", "B1", "1", "2", "3", "5"];
+const FLOOR_LABELS = { all: "全階", B1: "B1", "1": "1F", "2": "2F", "3": "3F", "5": "5F" };
 const WINGS = ["C", "N", "W", "E"];
 
 // フィルタ選択肢
@@ -142,7 +143,7 @@ function openPicker(type) {
     optsEl.classList.add("grid", "grid-floor");
     html = FLOORS.map((f) => {
       const on = state.floor === f ? " on" : "";
-      const sub = f === "all" ? "B1 〜 6F" :
+      const sub = f === "all" ? "B1 〜 5F" :
                   f === "B1" ? "地下1階" :
                   `${f}階`;
       return `<button class="picker-opt-tile${on}" data-pick="floor" data-value="${f}">
@@ -611,6 +612,8 @@ function friendsLabel(roomId) {
 // === フィルタ ===
 function filterRooms(list) {
   return list.filter((r) => {
+    // 6F は当面除外 (加山さん指示)
+    if (r.floor === 6) return false;
     // 階
     if (state.floor !== "all") {
       const targetFloor = state.floor.startsWith("B") ? -Number(state.floor.slice(1)) : Number(state.floor);

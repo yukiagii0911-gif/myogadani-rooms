@@ -15,6 +15,8 @@
   <button class="hd-export" id="btn-export">JSONコピー</button>
 </header>
 
+<div class="cal-hint" id="cal-hint">B1・1F は手本済み。他の階の教室を配置してください</div>
+
 <div class="floor-tabs" id="floor-tabs"></div>
 
 <section class="image-section">
@@ -27,16 +29,14 @@
 </section>
 
 <section class="active-room">
-  <div class="ar-name" id="ar-name">教室を選んで →</div>
-  <div class="ar-status" id="ar-status">タップで配置</div>
-</section>
-
-<section class="adjusters" id="adjusters" hidden>
-  <div class="action-row">
-    <button id="btn-delete">削除</button>
-    <button id="btn-next" class="primary">次の教室 →</button>
+  <div class="ar-info">
+    <div class="ar-name" id="ar-name">教室を選んで →</div>
+    <div class="ar-status" id="ar-status">タップで配置</div>
   </div>
-  <p class="hint">教室を直接タッチして移動・隅をドラッグしてリサイズ・上の○をドラッグで回転</p>
+  <div class="ar-actions" id="ar-actions" hidden>
+    <button id="btn-delete">削除</button>
+    <button id="btn-next" class="primary">次へ →</button>
+  </div>
 </section>
 
 <aside class="room-list">
@@ -49,6 +49,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=20260614i"></script>
 </body>
 </html>

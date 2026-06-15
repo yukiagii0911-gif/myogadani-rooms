@@ -2,8 +2,9 @@
 // 各階の外形を背景に、教室矩形を Konva Stage に配置・編集
 // Transformer で隅ドラッグ・回転ハンドル付き
 
-const FLOORS = ["-1", "1", "2", "3", "5", "6"];
-const FLOOR_LABELS = { "-1": "B1", "1": "1F", "2": "2F", "3": "3F", "5": "5F", "6": "6F" };
+// 6F は当面除外 (必要になったら "6" を再追加)
+const FLOORS = ["-1", "1", "2", "3", "5"];
+const FLOOR_LABELS = { "-1": "B1", "1": "1F", "2": "2F", "3": "3F", "5": "5F" };
 
 const FLOOR_ROOMS = {
   "-1": ["B1C16", "B1E04", "B1W01", "B1W02"],
@@ -62,7 +63,7 @@ function getFloorRoomList(f) {
 const $ = (id) => document.getElementById(id);
 const floorTabs = $("floor-tabs");
 const roomList = $("room-list");
-const adjusters = $("adjusters");
+const adjusters = $("ar-actions");
 const arName = $("ar-name");
 const arStatus = $("ar-status");
 const imageEmpty = $("image-empty");
@@ -76,14 +77,15 @@ function renderFloorTabs() {
     const on = state.floor === f ? " on" : "";
     return `<button class="floor-tab${on}" data-floor="${f}">${FLOOR_LABELS[f]}<span class="done-count">${done}/${total}</span></button>`;
   }).join("");
+  renderHint();
 }
-floorTabs.addEventListener("click", async (e) => {
+floorTabs.addEventListener("click", (e) => {
   const t = e.target.closest("[data-floor]");
   if (!t) return;
   state.floor = t.dataset.floor;
   state.activeRoom = null;
   state.selectedNode = null;
-  await renderAll();
+  renderAll();
 });
 
 // === 外形SVGロード ===
@@ -132,10 +134,6 @@ async function initStage() {
     height: state.viewBox.h,
   });
 
-  // Stage を CSS で容器に fit-contain させる
-  fitStageToContainer(stage, container);
-  window.addEventListener("resize", () => fitStageToContainer(stage, container));
-
   // 背景レイヤ (外形)
   const bgLayer = new Konva.Layer({ listening: false });
   const bgImg = new Konva.Image({
@@ -180,15 +178,18 @@ async function initStage() {
         const f = ensureFloor(state.floor);
         if (!f.rooms[state.activeRoom]) {
           // 新規配置 (タップ位置を中心に)
-          const pos = stage.getPointerPosition();
-          const stagePos = {
-            x: (pos.x - stage.x()) / stage.scaleX(),
-            y: (pos.y - stage.y()) / stage.scaleY(),
-          };
+          // スクリーン座標を viewBox 座標に逆変換
+          const sp = stage.getPointerPosition();
+          const scale = state.scale || 1;
+          const pad = state.pad || { x: 0, y: 0 };
+          const vbCx = (sp.x - pad.x) / scale;
+          const vbCy = (sp.y - pad.y) / scale;
           const w = DEFAULT_ROOM.w, h = DEFAULT_ROOM.h;
+          const ox = state.viewBox.x;
+          const oy = state.viewBox.y;
           f.rooms[state.activeRoom] = {
-            x: Math.round(stagePos.x - w / 2),
-            y: Math.round(stagePos.y - h / 2),
+            x: Math.round(vbCx - w / 2 + ox),
+            y: Math.round(vbCy - h / 2 + oy),
             w, h, angle: 0,
           };
           saveData();
@@ -211,6 +212,18 @@ async function initStage() {
   state.roomLayer = roomLayer;
   state.transformer = transformer;
 
+  // レイアウト確定後に Layer の scale/position を計算
+  const tryFit = () => {
+    const r = container.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) {
+      requestAnimationFrame(tryFit);
+    } else {
+      fitStageToContainer(stage, container);
+    }
+  };
+  tryFit();
+  window.addEventListener("resize", () => fitStageToContainer(stage, container));
+
   renderRooms();
 }
 
@@ -222,49 +235,72 @@ function fitStageToContainer(stage, container) {
   const scale = Math.min(sx, sy);
   const w = state.viewBox.w * scale;
   const h = state.viewBox.h * scale;
-  const x = (rect.width - w) / 2;
-  const y = (rect.height - h) / 2;
-  stage.scale({ x: scale, y: scale });
-  stage.position({ x, y });
+  state.scale = scale;
+  state.pad = { x: (rect.width - w) / 2, y: (rect.height - h) / 2 };
   stage.width(rect.width);
   stage.height(rect.height);
+  // 背景画像の表示サイズも合わせて更新
+  if (state.bgLayer) {
+    const bg = state.bgLayer.findOne("Image");
+    if (bg) {
+      bg.x(state.pad.x);
+      bg.y(state.pad.y);
+      bg.width(w);
+      bg.height(h);
+    }
+    state.bgLayer.batchDraw();
+  }
+  // 教室は座標が変わるので再描画
+  if (state.roomLayer) renderRooms();
   stage.batchDraw();
 }
 
 // === 教室レンダ ===
+// 全座標を「スクリーン座標」で扱う。viewBox 座標 → スクリーン座標 への変換は
+// state.scale, state.pad を使う。Konva の Stage/Layer scale は 1 のまま。
+// (Konva.Transformer は Stage/Layer scale を考慮しないため、手動 scale が必要)
 function renderRooms() {
   if (!state.roomLayer) return;
   state.transformer.nodes([]);
-  // 既存ノードを削除 (Transformer 以外)
-  state.roomLayer.find("Group, Text").forEach((n) => n.destroy());
+  // name="room" の Group のみ destroy。Transformer は Konva.Group 継承なので
+  // find("Group") で巻き込まれてしまう → name で限定する。
+  state.roomLayer.find(".room").forEach((n) => n.destroy());
+  state.roomLayer.find("Text").forEach((n) => n.destroy());
   state.selectedNode = null;
 
   const f = ensureFloor(state.floor);
-  // viewBox オフセット
   const ox = state.viewBox.x;
   const oy = state.viewBox.y;
+  const scale = state.scale || 1;
+  const pad = state.pad || { x: 0, y: 0 };
 
   for (const [name, pos] of Object.entries(f.rooms)) {
-    const cx = (pos.x - ox) + pos.w / 2;
-    const cy = (pos.y - oy) + pos.h / 2;
-    // 矩形 (回転対応)
-    const rect = new Konva.Rect({
-      x: cx,
-      y: cy,
-      width: pos.w,
-      height: pos.h,
-      offsetX: pos.w / 2,
-      offsetY: pos.h / 2,
+    // viewBox 座標 → スクリーン座標
+    const sw = pos.w * scale;
+    const sh = pos.h * scale;
+    const scx = ((pos.x - ox) + pos.w / 2) * scale + pad.x;
+    const scy = ((pos.y - oy) + pos.h / 2) * scale + pad.y;
+
+    const group = new Konva.Group({
+      x: scx,
+      y: scy,
       rotation: pos.angle || 0,
+      draggable: true,
+      name: "room",
+    });
+    group.setAttr("roomName", name);
+    const rect = new Konva.Rect({
+      x: -sw / 2,
+      y: -sh / 2,
+      width: sw,
+      height: sh,
       fill: "#b2f2bb",
       stroke: "#2e6b3a",
       strokeWidth: 2,
       cornerRadius: 4,
-      draggable: true,
-      name: "room",
     });
-    rect.setAttr("roomName", name);
-    // ラベル (回転しない・中央に)
+    group.add(rect);
+
     const label = new Konva.Text({
       text: name,
       fontSize: 11,
@@ -276,54 +312,56 @@ function renderRooms() {
       fillAfterStrokeEnabled: true,
       listening: false,
     });
-    label.x(cx - label.width() / 2);
-    label.y(cy - label.height() / 2);
+    label.x(scx - label.width() / 2);
+    label.y(scy - label.height() / 2);
     label.setAttr("forRoom", name);
 
-    rect.on("click tap", (e) => {
+    group.on("click tap", (e) => {
       e.cancelBubble = true;
       selectRoom(name);
     });
-    rect.on("dragmove", () => {
-      label.x(rect.x() - label.width() / 2);
-      label.y(rect.y() - label.height() / 2);
+    group.on("dragmove", () => {
+      label.x(group.x() - label.width() / 2);
+      label.y(group.y() - label.height() / 2);
     });
-    rect.on("transform", () => {
-      // Transformer はスケールで変形する → 実寸 width/height に反映してスケールをリセット
-      const sx = rect.scaleX();
-      const sy = rect.scaleY();
+    group.on("transform", () => {
+      const sx = group.scaleX();
+      const sy = group.scaleY();
       if (Math.abs(sx - 1) > 0.001 || Math.abs(sy - 1) > 0.001) {
         const nw = Math.max(10, rect.width() * sx);
         const nh = Math.max(10, rect.height() * sy);
         rect.width(nw);
         rect.height(nh);
-        rect.offsetX(nw / 2);
-        rect.offsetY(nh / 2);
-        rect.scaleX(1);
-        rect.scaleY(1);
+        rect.x(-nw / 2);
+        rect.y(-nh / 2);
+        group.scaleX(1);
+        group.scaleY(1);
       }
-      label.x(rect.x() - label.width() / 2);
-      label.y(rect.y() - label.height() / 2);
+      label.x(group.x() - label.width() / 2);
+      label.y(group.y() - label.height() / 2);
     });
-    rect.on("dragend transformend", () => {
-      // データに反映
+    group.on("dragend transformend", () => {
+      // スクリーン座標 → viewBox 座標 に逆変換して保存
+      const vbW = rect.width() / scale;
+      const vbH = rect.height() / scale;
+      const vbCx = (group.x() - pad.x) / scale;
+      const vbCy = (group.y() - pad.y) / scale;
       const d = ensureFloor(state.floor);
       d.rooms[name] = {
-        x: Math.round(rect.x() - rect.width() / 2 + ox),
-        y: Math.round(rect.y() - rect.height() / 2 + oy),
-        w: Math.round(rect.width()),
-        h: Math.round(rect.height()),
-        angle: Math.round(rect.rotation() * 10) / 10,
+        x: Math.round(vbCx - vbW / 2 + ox),
+        y: Math.round(vbCy - vbH / 2 + oy),
+        w: Math.round(vbW),
+        h: Math.round(vbH),
+        angle: Math.round(group.rotation() * 10) / 10,
       };
       saveData();
     });
 
-    state.roomLayer.add(rect);
+    state.roomLayer.add(group);
     state.roomLayer.add(label);
   }
   state.roomLayer.batchDraw();
 
-  // 選択状態を復元
   if (state.activeRoom) {
     selectRoom(state.activeRoom);
   }
@@ -457,10 +495,10 @@ function showToast(msg) {
   toastTimer = setTimeout(() => toast.classList.remove("show"), 1500);
 }
 
-// === Render all ===
-async function renderAll() {
+// === Render all (階切替時) ===
+function renderAll() {
   renderFloorTabs();
-  await initStage();
+  renderRooms();
   renderRoomList();
   renderActive();
 }
@@ -490,8 +528,39 @@ async function loadSeedIfNeeded() {
   } catch {}
 }
 
+// 配置数が最大の階を返す(無ければ null)
+function pickInitialFloor() {
+  let best = null;
+  let max = 0;
+  for (const f of FLOORS) {
+    const c = state.data[f] && state.data[f].rooms ? Object.keys(state.data[f].rooms).length : 0;
+    if (c > max) { max = c; best = f; }
+  }
+  return best;
+}
+
+// 進捗ヒントの更新
+function renderHint() {
+  const hint = document.getElementById("cal-hint");
+  if (!hint) return;
+  let total = 0, done = 0;
+  for (const f of FLOORS) {
+    total += getFloorRoomList(f).length;
+    done += state.data[f] && state.data[f].rooms ? Object.keys(state.data[f].rooms).length : 0;
+  }
+  hint.textContent = `B1・1F は手本済み。他の階の教室を配置してください (全体 ${done}/${total})`;
+}
+
 // Init
 (async () => {
-  await renderAll();
+  // 1. seed を先にマージ(stage がない状態で state.data に入れるだけ)
   await loadSeedIfNeeded();
+  // 2. 配置済みの階があればそこを初期表示にする(無ければデフォルトのまま)
+  const initial = pickInitialFloor();
+  if (initial) state.floor = initial;
+  // 3. Stage は一度だけ作る
+  await initStage();
+  // 4. 描画
+  renderAll();
+  renderHint();
 })();
