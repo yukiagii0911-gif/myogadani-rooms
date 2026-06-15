@@ -152,13 +152,25 @@ async function logout() {
 }
 
 // Firestore: users/{uid} を取得 (初回ログインなら新規作成)
-async function loadUserProfile() {
+async function loadUserProfile(retries = 2) {
   const fb = window.__firebase;
   const { fns, db } = fb;
   const ref = fns.doc(db, "users", state.user.uid);
-  const snap = await fns.getDoc(ref);
+  let snap;
+  try {
+    snap = await fns.getDoc(ref);
+  } catch (e) {
+    // unavailable は瞬間的なネットワーク/初期化エラー → 自動リトライ
+    if (retries > 0 && (e?.code === "unavailable" || e?.message?.includes("offline"))) {
+      console.warn("[userProfile] retrying after error:", e?.code);
+      await new Promise((r) => setTimeout(r, 800));
+      return loadUserProfile(retries - 1);
+    }
+    throw e;
+  }
   if (snap.exists()) {
     state.userProfile = snap.data();
+    console.log("[userProfile] loaded", state.userProfile?.userName || "(no userName)");
   } else {
     // 初回: Google 表示名から仮ユーザー名を生成
     const fallback = (state.user.displayName || "user").replace(/\s+/g, "").slice(0, 12) || "user";
