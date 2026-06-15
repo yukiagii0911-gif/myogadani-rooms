@@ -201,6 +201,7 @@ async function editUserName() {
   // 新しい名前を予約 + プロフィール更新
   await fns.setDoc(nameRef, { uid: state.user.uid });
   await fns.setDoc(fns.doc(db, "users", state.user.uid), { userName: trimmed }, { merge: true });
+  if (!state.userProfile) state.userProfile = {};
   state.userProfile.userName = trimmed;
   renderMeTab();
 }
@@ -268,12 +269,13 @@ function bindCourseSearch() {
     });
   }
   // 結果リスト全体にデリゲート (個別バインドより堅牢)
+  // data-idx は <button> に付いている (iOS Safari 対策で <li> ではなく <button> をラップ)
   const ul = document.getElementById("course-results");
   if (ul) {
     ul.addEventListener("click", (e) => {
-      const li = e.target.closest("li[data-idx]");
-      if (!li) return;
-      const idx = Number(li.dataset.idx);
+      const el = e.target.closest("[data-idx]");
+      if (!el) return;
+      const idx = Number(el.dataset.idx);
       const course = lastSearchHits[idx];
       if (course) addCourseToTimetable(course);
     });
