@@ -313,16 +313,17 @@ function renderCourseResults(query) {
     return a.period - b.period;
   });
   lastSearchHits = hits; // delegation で参照される
+  // iOS Safari の click 発火対策で <button> ラップ
   ul.innerHTML = hits.map((c, i) => {
     const sem = c.semester === "spring" ? "春" : "秋";
-    return `<li data-idx="${i}">
+    return `<li><button type="button" class="course-result-btn" data-idx="${i}">
       <div class="course-name">${escapeHtml(c.courseName)}</div>
       <div class="course-meta">
         <span class="badge">${sem}${c.day}${c.period}</span>
         <span class="badge">${c.room}</span>
         ${escapeHtml((c.professor || "").slice(0, 40))}
       </div>
-    </li>`;
+    </button></li>`;
   }).join("");
 }
 
@@ -386,31 +387,45 @@ async function loadTimetable() {
 }
 
 function renderTimetable() {
-  const ul = document.getElementById("timetable-list");
-  if (!ul) return;
+  const root = document.getElementById("timetable-list");
+  if (!root) return;
   if (!state.timetable.length) {
-    ul.innerHTML = '<li class="empty-state">まだ授業を登録していません</li>';
+    root.innerHTML = '<div class="empty-state">まだ授業を登録していません</div>';
     return;
   }
-  const dayOrder = { "月": 1, "火": 2, "水": 3, "木": 4, "金": 5, "土": 6 };
-  const sorted = [...state.timetable].sort((a, b) => {
-    if (a.semester !== b.semester) return a.semester === "spring" ? -1 : 1;
-    if (a.day !== b.day) return (dayOrder[a.day] || 9) - (dayOrder[b.day] || 9);
-    return a.period - b.period;
-  });
-  ul.innerHTML = sorted.map((t) => {
-    const sem = t.semester === "spring" ? "春" : "秋";
-    return `<li>
-      <div class="tt-row">
-        <span class="tt-slot">${sem}${t.day}${t.period}</span>
-        <span class="tt-name">${escapeHtml(t.courseName)}</span>
-        <span class="tt-room">${t.room}</span>
-        <button class="tt-delete" data-slot="${t.slotId}">削除</button>
-      </div>
-    </li>`;
-  }).join("");
-  ul.querySelectorAll(".tt-delete").forEach((btn) => {
-    btn.addEventListener("click", () => removeCourseFromTimetable(btn.dataset.slot));
+  // 春・秋 をそれぞれ縦横マトリクス (時限×曜日) で描画
+  const days = ["月", "火", "水", "木", "金", "土"];
+  const periods = [1, 2, 3, 4, 5, 6, 7];
+  const sems = [
+    { key: "spring", label: "春学期" },
+    { key: "fall", label: "秋学期" },
+  ];
+  let html = "";
+  for (const sem of sems) {
+    const entries = state.timetable.filter((t) => t.semester === sem.key);
+    if (!entries.length) continue;
+    const cellMap = {};
+    for (const e of entries) cellMap[`${e.day}_${e.period}`] = e;
+    html += `<div class="tt-section">
+      <div class="tt-section-title">${sem.label}</div>
+      <table class="tt-grid"><thead><tr><th></th>${days.map((d) => `<th>${d}</th>`).join("")}</tr></thead><tbody>
+        ${periods.map((p) => `<tr><th>${p}</th>${days.map((d) => {
+          const e = cellMap[`${d}_${p}`];
+          if (e) {
+            return `<td class="tt-cell tt-filled" data-slot="${e.slotId}">
+              <div class="tt-cell-name">${escapeHtml(e.courseName)}</div>
+              <div class="tt-cell-room">${e.room}</div>
+            </td>`;
+          }
+          return `<td class="tt-cell"></td>`;
+        }).join("")}</tr>`).join("")}
+      </tbody></table>
+    </div>`;
+  }
+  root.innerHTML = html;
+  // セルタップで削除 (確認ダイアログ経由)
+  root.querySelectorAll(".tt-filled").forEach((cell) => {
+    cell.addEventListener("click", () => removeCourseFromTimetable(cell.dataset.slot));
   });
 }
 
