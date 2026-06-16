@@ -556,7 +556,7 @@ function subscribePresence() {
         state.allPresence = next;
         // 既存のリスト/マップ/詳細パネルを再描画
         render();
-        if (state.selectedRoom) renderDetailSheet();
+        if (state.selectedRoom) openSheet(state.selectedRoom);
       },
       (e) => { console.warn("[presence] snapshot error:", e?.code, e?.message); }
     );
@@ -587,7 +587,7 @@ async function setMyPresence(roomId, status) {
   state.allPresence[state.user.uid] = { ...data, updatedAt: Date.now() };
   saveLocalPresence(state.user.uid, state.allPresence[state.user.uid]);
   render();
-  if (state.selectedRoom) renderDetailSheet();
+  if (state.selectedRoom) openSheet(state.selectedRoom);
   // Firestore に保存 (リトライ付き)
   try {
     await withRetry(() => fns.setDoc(fns.doc(db, "presence", state.user.uid), data));
