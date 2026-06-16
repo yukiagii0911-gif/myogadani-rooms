@@ -271,16 +271,29 @@ async function loadUserProfile() {
   const ref = fns.doc(db, "users", state.user.uid);
   const snap = await withRetry(() => fns.getDoc(ref));
   if (snap.exists()) {
-    state.userProfile = snap.data();
+    const d = snap.data();
+    state.userProfile = d;
+    // 既存ドキュメントに個人情報フィールドが残っていたら最小限の項目で上書きして消去
+    if (d.email !== undefined || d.displayName !== undefined || d.photoURL !== undefined) {
+      const cleaned = {
+        userName: d.userName ?? null,
+        fallbackName: d.fallbackName ?? (state.user.displayName || "user").replace(/\s+/g, "").slice(0, 12),
+        createdAt: d.createdAt ?? fns.serverTimestamp(),
+      };
+      try {
+        await withRetry(() => fns.setDoc(ref, cleaned));
+        state.userProfile = cleaned;
+        console.log("[userProfile] cleaned up private fields");
+      } catch (e) {
+        console.warn("[userProfile] cleanup failed:", e?.code);
+      }
+    }
     console.log("[userProfile] loaded", state.userProfile?.userName || "(no userName)");
     return;
   }
-  // 初回: Google 表示名から仮ユーザー名を生成
+  // 初回: Google 表示名から仮ユーザー名を生成 (個人情報は Firestore に保存しない)
   const fallback = (state.user.displayName || "user").replace(/\s+/g, "").slice(0, 12) || "user";
   const newDoc = {
-    displayName: state.user.displayName || "",
-    photoURL: state.user.photoURL || "",
-    email: state.user.email || "",
     userName: null,
     fallbackName: fallback,
     createdAt: fns.serverTimestamp(),
@@ -579,7 +592,6 @@ async function setMyPresence(roomId, status) {
     roomId: status ? roomId : null,
     status: status || null,
     userName: state.userProfile?.userName || "",
-    displayName: state.user.displayName || "",
     photoURL: state.user.photoURL || "",
     updatedAt: fns.serverTimestamp(),
   };
@@ -618,7 +630,6 @@ async function followUser(target) {
   const entry = {
     uid: target.uid,
     userName: target.userName || "",
-    displayName: target.displayName || "",
     photoURL: target.photoURL || "",
   };
   // 楽観更新
@@ -668,11 +679,25 @@ async function loadFollows() {
   try {
     const snap = await withRetry(() => fns.getDocs(fns.collection(db, "users", state.user.uid, "follows")));
     state.follows = [];
+    const dirtyDocs = [];
     snap.forEach((doc) => {
       const d = doc.data();
-      state.follows.push({ uid: doc.id, userName: d.userName || "", displayName: d.displayName || "", photoURL: d.photoURL || "" });
+      state.follows.push({ uid: doc.id, userName: d.userName || "", photoURL: d.photoURL || "" });
+      // 古い individual fields が残ってたら掃除対象
+      if (d.displayName !== undefined || d.email !== undefined) {
+        dirtyDocs.push({ uid: doc.id, userName: d.userName || "", photoURL: d.photoURL || "", createdAt: d.createdAt });
+      }
     });
     console.log("[follows] loaded", state.follows.length, "entries");
+    // バックグラウンドで個人情報を掃除 (setDoc 完全置換)
+    for (const f of dirtyDocs) {
+      try {
+        await withRetry(() => fns.setDoc(fns.doc(db, "users", state.user.uid, "follows", f.uid), f));
+      } catch (e) {
+        console.warn("[follows] cleanup failed:", f.uid, e?.code);
+      }
+    }
+    if (dirtyDocs.length) console.log("[follows] cleaned", dirtyDocs.length, "docs");
   } catch (e) {
     console.error("[follows] load failed (local kept):", e?.code, e?.message);
   }
@@ -798,9 +823,7 @@ function openFriendSheet(friendUid) {
   }
   detail.innerHTML = `
     <div class="fd-profile">
-      <img src="${f.photoURL || ''}" alt="">
       <div>
-        <div class="fd-name">${escapeHtml(f.displayName || f.userName)}</div>
         <div class="fd-username">@${escapeHtml(f.userName)}</div>
       </div>
     </div>
@@ -878,8 +901,7 @@ function openCellDetailSheet(slotId) {
       <li><button type="button" class="friend-card" data-fuid="${f.uid}">
         <img src="${f.photoURL || ''}" alt="">
         <div class="fc-info">
-          <div class="fc-name">${escapeHtml(f.displayName || f.userName)}</div>
-          <div class="fc-username">@${escapeHtml(f.userName)}</div>
+          <div class="fc-name">@${escapeHtml(f.userName)}</div>
         </div>
       </button></li>
     `).join("")}</ul>`;
@@ -1788,8 +1810,8 @@ function friendRow(f) {
       : f.status === "booked"
       ? '<span class="friend-meta">使う予定</span>'
       : '<span class="friend-meta">予定なし</span>';
-  const name = f.isMe ? "あなた" : (f.displayName || f.userName || "");
-  const initial = (name || "?").slice(0, 1);
+  const name = f.isMe ? "あなた" : (f.userName ? `@${f.userName}` : "?");
+  const initial = (f.userName || "?").slice(0, 1);
   const avatar = f.photoURL
     ? `<img class="friend-avatar" src="${f.photoURL}" alt="">`
     : `<div class="friend-avatar">${escapeHtml(initial)}</div>`;
