@@ -1135,3 +1135,21 @@ button:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2p
 }
 .course-result-btn:active { background: var(--bg); }
 .course-results li { padding: 0; border-bottom: 1px solid var(--border); }
+
+/* マイページ ユーザー名表示 (変更ボタン横) */
+.me-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.me-section-label { flex: 0 0 auto; }
+.me-section-value {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

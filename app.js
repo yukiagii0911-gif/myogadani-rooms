@@ -256,7 +256,8 @@ function renderMeTab() {
     if (avatar) avatar.src = state.user.photoURL || "";
     document.getElementById("me-displayname").textContent = state.user.displayName || "";
     const uname = state.userProfile?.userName;
-    document.getElementById("me-username").textContent = uname ? `@${uname}` : "(ユーザー名未設定)";
+    const inline = document.getElementById("me-username-inline");
+    if (inline) inline.textContent = uname ? `@${uname}` : "未設定";
     renderTimetable();
   } else {
     gate.hidden = false;

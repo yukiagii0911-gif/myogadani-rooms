@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FAF6F0">
 <title>茗荷谷ビューワー</title>
-<link rel="stylesheet" href="style.css?v=20260615j">
+<link rel="stylesheet" href="style.css?v=20260615k">
 </head>
 <body>
 
@@ -117,13 +117,13 @@
       <img class="me-avatar" id="me-avatar" alt="">
       <div class="me-info">
         <div class="me-displayname" id="me-displayname"></div>
-        <div class="me-username" id="me-username"></div>
       </div>
       <button class="btn-text" id="btn-logout">ログアウト</button>
     </div>
     <div class="me-section">
       <div class="me-section-head">
-        <span>ユーザー名</span>
+        <span class="me-section-label">ユーザー名</span>
+        <span class="me-section-value" id="me-username-inline">未設定</span>
         <button class="btn-text" id="btn-edit-username">変更</button>
       </div>
       <p class="me-section-hint" id="me-username-hint">他の人があなたをフォローするときに使う名前。一意である必要があります。</p>
@@ -179,7 +179,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
-  import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+  import { initializeFirestore, persistentLocalCache, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCoJe4EJdZZeiBhAPP7RQ5OvQlqlKEREC0",
@@ -192,10 +192,20 @@
   };
 
   const app = initializeApp(firebaseConfig);
-  // app.js から使えるよう window 経由で公開 (静的 import が一度しか使えないため)
+  // 永続キャッシュ (IndexedDB) で書き込みを保留 → ネット復帰で自動同期
+  // これにより unavailable で UI 表示後にリロードでデータが消える問題が解消される
+  let db;
+  try {
+    db = initializeFirestore(app, { localCache: persistentLocalCache({}) });
+  } catch (e) {
+    // 既に初期化済みなど(複数タブで起こりうる)はフォールバック
+    console.warn("[firestore] persistent cache init failed, fallback:", e?.message);
+    db = initializeFirestore(app, {});
+  }
+  // app.js から使えるよう window 経由で公開
   window.__firebase = {
     auth: getAuth(app),
-    db: getFirestore(app),
+    db,
     googleProvider: new GoogleAuthProvider(),
     fns: { signInWithPopup, signOut, onAuthStateChanged, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp },
   };
@@ -203,6 +213,6 @@
   if (typeof window.__onFirebaseReady === "function") window.__onFirebaseReady();
 </script>
 
-<script type="module" src="app.js?v=20260615j"></script>
+<script type="module" src="app.js?v=20260615k"></script>
 </body>
 </html>
