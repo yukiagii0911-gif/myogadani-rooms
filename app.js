@@ -34,11 +34,7 @@ const SEMESTER_OPTIONS = [
 ];
 
 // モック友達
-const MOCK_FRIENDS = [
-  { id: "f1", name: "太郎", marker: { room: "5C04", kind: "planned" } },
-  { id: "f2", name: "花子", marker: { room: "5W04", kind: "in" } },
-  { id: "f3", name: "次郎", marker: null },
-];
+// (旧 MOCK_FRIENDS は廃止。Firestore presence で実ユーザーの入室状況を取得する)
 
 // === State ===
 const state = {
@@ -59,6 +55,10 @@ const state = {
   friendTimetables: {}, // { [friendUid]: [...timetable entries] } 取得済みの友達時間割キャッシュ
   selectedFriend: null, // 友達詳細シートで開いている friend
   selectedCell: null,   // セル詳細シートで開いている timetable エントリ
+  // 全ユーザーの入室・予約状況 (Firestore リアルタイム同期)
+  // { [uid]: { roomId, status: "in"|"booked"|null, userName, displayName, photoURL, updatedAt } }
+  allPresence: {},
+  presenceUnsub: null,  // onSnapshot 解除関数
 };
 
 let SCHEDULE = null;
@@ -205,15 +205,19 @@ function initAuth() {
         const cachedProfile = loadLocalProfile(user.uid);
         const cachedTimetable = loadLocalTimetable(user.uid);
         const cachedFollows = loadLocalFollows(user.uid);
+        const cachedPresence = loadLocalPresence(user.uid);
         if (cachedProfile) state.userProfile = cachedProfile;
         if (cachedTimetable) state.timetable = cachedTimetable;
         if (cachedFollows) state.follows = cachedFollows;
+        if (cachedPresence) state.allPresence[user.uid] = cachedPresence;
         // フォロー中ユーザーの時間割もキャッシュから復元
         for (const f of state.follows) {
           state.friendTimetables[f.uid] = loadLocalFriendTT(user.uid, f.uid);
         }
         renderMeTab();
         renderFriendsTab();
+        // presence: 全ユーザーをリアルタイム購読
+        subscribePresence();
         // 2) Firestore から最新を取得 → 成功したら localStorage を上書き
         try {
           await Promise.all([loadUserProfile(), loadTimetable(), loadFollows()]);
@@ -228,6 +232,7 @@ function initAuth() {
           console.warn("Firestore load error (using local cache):", e?.code || e?.message || e);
         }
       } else {
+        unsubscribePresence();
         state.user = null;
         state.userProfile = null;
         state.timetable = [];
@@ -235,6 +240,7 @@ function initAuth() {
         state.friendTimetables = {};
         renderMeTab();
         renderFriendsTab();
+        render();
       }
     });
   };
@@ -523,6 +529,71 @@ async function loadTimetable() {
   } catch (e) {
     console.error("[timetable] load failed after retries:", e?.code, e?.message);
     state.timetable = [];
+  }
+}
+
+// === 入室・予約状況 (Firestore presence) ===
+function presenceLocalKey(uid) { return `myogadani-presence-${uid}`; }
+function saveLocalPresence(uid, presence) {
+  try { localStorage.setItem(presenceLocalKey(uid), JSON.stringify(presence)); } catch {}
+}
+function loadLocalPresence(uid) {
+  try { return JSON.parse(localStorage.getItem(presenceLocalKey(uid)) || "null"); } catch { return null; }
+}
+
+// 全ユーザーの presence をリアルタイム購読
+function subscribePresence() {
+  if (!window.__firebase) return;
+  if (state.presenceUnsub) { try { state.presenceUnsub(); } catch {} state.presenceUnsub = null; }
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  try {
+    state.presenceUnsub = fns.onSnapshot(
+      fns.collection(db, "presence"),
+      (snap) => {
+        const next = {};
+        snap.forEach((doc) => { next[doc.id] = doc.data(); });
+        state.allPresence = next;
+        // 既存のリスト/マップ/詳細パネルを再描画
+        render();
+        if (state.selectedRoom) renderDetailSheet();
+      },
+      (e) => { console.warn("[presence] snapshot error:", e?.code, e?.message); }
+    );
+    console.log("[presence] subscribed");
+  } catch (e) {
+    console.error("[presence] subscribe failed:", e);
+  }
+}
+function unsubscribePresence() {
+  if (state.presenceUnsub) { try { state.presenceUnsub(); } catch {} state.presenceUnsub = null; }
+  state.allPresence = {};
+}
+
+// 自分の入室・予約状態を更新 (status: "in" | "booked" | null = 退室)
+async function setMyPresence(roomId, status) {
+  if (!state.user) { alert("ログインが必要です"); return; }
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  const data = {
+    roomId: status ? roomId : null,
+    status: status || null,
+    userName: state.userProfile?.userName || "",
+    displayName: state.user.displayName || "",
+    photoURL: state.user.photoURL || "",
+    updatedAt: fns.serverTimestamp(),
+  };
+  // 楽観更新: state.allPresence と localStorage に即反映
+  state.allPresence[state.user.uid] = { ...data, updatedAt: Date.now() };
+  saveLocalPresence(state.user.uid, state.allPresence[state.user.uid]);
+  render();
+  if (state.selectedRoom) renderDetailSheet();
+  // Firestore に保存 (リトライ付き)
+  try {
+    await withRetry(() => fns.setDoc(fns.doc(db, "presence", state.user.uid), data));
+    console.log("[presence] saved:", status, roomId);
+  } catch (e) {
+    console.error("[presence] save failed (local kept):", e?.code, e?.message);
   }
 }
 
@@ -1139,24 +1210,44 @@ function nextCoursesToday(room, semester, day, fromPeriod) {
   }
   return out;
 }
+// Firestore presence からその教室の人を抽出 (status 別)
+// 戻り値: [{ uid, userName, displayName, photoURL, status, isMe, isFollow }]
+function presenceListForRoom(roomId, status) {
+  const out = [];
+  const followUids = new Set(state.follows.map((f) => f.uid));
+  for (const [uid, p] of Object.entries(state.allPresence)) {
+    if (!p || p.roomId !== roomId || p.status !== status) continue;
+    out.push({
+      uid,
+      userName: p.userName || "",
+      displayName: p.displayName || "",
+      photoURL: p.photoURL || "",
+      status: p.status,
+      isMe: state.user?.uid === uid,
+      isFollow: followUids.has(uid),
+    });
+  }
+  return out;
+}
+// フォロー中ユーザー (+ 自分) のうちその教室にいる人 (status 問わず)
 function friendsInRoom(roomId) {
-  return MOCK_FRIENDS.filter((f) => f.marker?.room === roomId);
+  return [...presenceListForRoom(roomId, "in"), ...presenceListForRoom(roomId, "booked")]
+    .filter((p) => p.isMe || p.isFollow);
 }
-// 自分 + 友達の合計（実際に部屋に「いる」人数 = inMarker / kind="in"）
+// 「いま入室中」の人数 (全ユーザー)
 function peopleInRoom(roomId) {
-  const friendsIn = MOCK_FRIENDS.filter(
-    (f) => f.marker?.room === roomId && f.marker?.kind === "in"
-  );
-  const meIn = state.myMarkers[roomId] === "in" ? 1 : 0;
-  return friendsIn.length + meIn;
+  return presenceListForRoom(roomId, "in").length;
 }
-// 「予定」の人数 (友達 + 自分)
+// 「予定」の人数 (全ユーザー)
 function plannersForRoom(roomId) {
-  const friendsPlanned = MOCK_FRIENDS.filter(
-    (f) => f.marker?.room === roomId && f.marker?.kind === "planned"
-  );
-  const mePlanned = state.myMarkers[roomId] === "planned" ? 1 : 0;
-  return friendsPlanned.length + mePlanned;
+  return presenceListForRoom(roomId, "booked").length;
+}
+// 自分の現在の入室状態を取得 ("in" | "booked" | null)
+function myPresenceStatus(roomId) {
+  if (!state.user) return null;
+  const p = state.allPresence[state.user.uid];
+  if (!p || p.roomId !== roomId) return null;
+  return p.status;
 }
 
 // === レンダ ===
@@ -1223,13 +1314,8 @@ function renderListView() {
     else busy.push({ room: r, course: courses[0] });
   }
 
+  // friendsByRoom は使われていないので削除 (現状の peopleInRoom / plannersForRoom が allPresence ベースで動く)
   const friendsByRoom = {};
-  MOCK_FRIENDS.forEach((f) => {
-    if (f.marker?.room) {
-      friendsByRoom[f.marker.room] = friendsByRoom[f.marker.room] || [];
-      friendsByRoom[f.marker.room].push(f);
-    }
-  });
 
   let html = "";
 
@@ -1532,7 +1618,7 @@ function openSheet(roomId) {
   const isCurrentlyBusy = courses.length > 0;
   const next = nextCoursesToday(roomId, state.semester, state.day, state.period);
   const friendsHere = friendsInRoom(roomId);
-  const inMarker = state.myMarkers[roomId];
+  const inMarker = myPresenceStatus(roomId); // "in" | "booked" | null
 
   const tagsHtml = (room.tags || []).map(
     (t) => `<span class="badge tag">${t}</span>`
@@ -1623,9 +1709,9 @@ function openSheet(roomId) {
             ? `<button class="action-btn exit" data-action="exit"><span data-icon="exit-room"></span> 退室する</button>`
             : `<button class="action-btn in-room" data-action="enter"><span data-icon="enter-room"></span> 入室する</button>`
         }
-        <button class="action-btn ${inMarker === "planned" ? "primary" : "secondary"}" data-action="bookmark">
+        <button class="action-btn ${inMarker === "booked" ? "primary" : "secondary"}" data-action="bookmark">
           <span data-icon="bookmark"></span>
-          ${inMarker === "planned" ? "予約解除" : "使う予定 (仮)"}
+          ${inMarker === "booked" ? "予約解除" : "使う予定 (仮)"}
         </button>
       </div>
     `;
@@ -1684,31 +1770,34 @@ new MutationObserver(applyScrollLock).observe(document.body, {
 });
 
 function handleAction(action, roomId) {
-  const cur = state.myMarkers[roomId];
+  if (!state.user) { alert("入室・予約にはログインが必要です"); return; }
+  const cur = myPresenceStatus(roomId);
   if (action === "enter") {
-    state.myMarkers[roomId] = "in";
+    setMyPresence(roomId, "in");
   } else if (action === "exit") {
-    delete state.myMarkers[roomId];
+    setMyPresence(null, null);
   } else if (action === "bookmark") {
-    if (cur === "planned") delete state.myMarkers[roomId];
-    else state.myMarkers[roomId] = "planned";
+    if (cur === "booked") setMyPresence(null, null);
+    else setMyPresence(roomId, "booked");
   }
-  saveMyMarkers();
-  openSheet(roomId); // 再描画
-  render();
 }
 
 function friendRow(f) {
   const kindLabel =
-    f.marker?.kind === "in"
+    f.status === "in"
       ? '<span class="friend-meta">入室中</span>'
-      : f.marker?.kind === "planned"
+      : f.status === "booked"
       ? '<span class="friend-meta">使う予定</span>'
       : '<span class="friend-meta">予定なし</span>';
+  const name = f.isMe ? "あなた" : (f.displayName || f.userName || "");
+  const initial = (name || "?").slice(0, 1);
+  const avatar = f.photoURL
+    ? `<img class="friend-avatar" src="${f.photoURL}" alt="">`
+    : `<div class="friend-avatar">${escapeHtml(initial)}</div>`;
   return `
     <div class="friend-row">
-      <div class="friend-avatar">${f.name.slice(0, 1)}</div>
-      <div class="friend-name">${f.name}</div>
+      ${avatar}
+      <div class="friend-name">${escapeHtml(name)}</div>
       ${kindLabel}
     </div>
   `;

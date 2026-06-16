@@ -225,7 +225,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
   import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
-  import { initializeFirestore, persistentLocalCache, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+  import { initializeFirestore, persistentLocalCache, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyCoJe4EJdZZeiBhAPP7RQ5OvQlqlKEREC0",
@@ -253,12 +253,12 @@
     auth: getAuth(app),
     db,
     googleProvider: new GoogleAuthProvider(),
-    fns: { signInWithPopup, signOut, onAuthStateChanged, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp },
+    fns: { signInWithPopup, signOut, onAuthStateChanged, doc, getDoc, setDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp, onSnapshot },
   };
   // 既に app.js がロード済みで初期化待ちなら通知
   if (typeof window.__onFirebaseReady === "function") window.__onFirebaseReady();
 </script>
 
-<script type="module" src="app.js?v=20260616a"></script>
+<script type="module" src="app.js?v=20260616b"></script>
 </body>
 </html>
