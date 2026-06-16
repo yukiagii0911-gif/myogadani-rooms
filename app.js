@@ -56,6 +56,9 @@ const state = {
   userProfile: null,   // Firestore users/{uid} ドキュメント
   timetable: [],       // [{semester, day, period, room, courseId, courseName}]
   follows: [],         // [{uid, userName, displayName, photoURL}]
+  friendTimetables: {}, // { [friendUid]: [...timetable entries] } 取得済みの友達時間割キャッシュ
+  selectedFriend: null, // 友達詳細シートで開いている friend
+  selectedCell: null,   // セル詳細シートで開いている timetable エントリ
 };
 
 let SCHEDULE = null;
@@ -95,6 +98,8 @@ function bindTabs() {
 // localStorage 二重保存 (Firestore 失敗時の保険)
 function localProfileKey(uid) { return `myogadani-profile-${uid}`; }
 function localTimetableKey(uid) { return `myogadani-timetable-${uid}`; }
+function localFollowsKey(uid) { return `myogadani-follows-${uid}`; }
+function localFriendTTKey(uid, friendUid) { return `myogadani-friendtt-${uid}-${friendUid}`; }
 function saveLocalProfile(uid, profile) {
   try { localStorage.setItem(localProfileKey(uid), JSON.stringify(profile)); } catch {}
 }
@@ -106,6 +111,18 @@ function saveLocalTimetable(uid, timetable) {
 }
 function loadLocalTimetable(uid) {
   try { return JSON.parse(localStorage.getItem(localTimetableKey(uid)) || "[]"); } catch { return []; }
+}
+function saveLocalFollows(uid, follows) {
+  try { localStorage.setItem(localFollowsKey(uid), JSON.stringify(follows)); } catch {}
+}
+function loadLocalFollows(uid) {
+  try { return JSON.parse(localStorage.getItem(localFollowsKey(uid)) || "[]"); } catch { return []; }
+}
+function saveLocalFriendTT(uid, friendUid, tt) {
+  try { localStorage.setItem(localFriendTTKey(uid, friendUid), JSON.stringify(tt)); } catch {}
+}
+function loadLocalFriendTT(uid, friendUid) {
+  try { return JSON.parse(localStorage.getItem(localFriendTTKey(uid, friendUid)) || "[]"); } catch { return []; }
 }
 
 // Firestore 操作リトライ (unavailable / offline / network エラー時)
@@ -132,6 +149,43 @@ function bindAuth() {
   document.getElementById("btn-login-from-friends")?.addEventListener("click", login);
   document.getElementById("btn-logout")?.addEventListener("click", logout);
   document.getElementById("btn-edit-username")?.addEventListener("click", editUserName);
+  // フォロー検索
+  document.getElementById("btn-follow-search")?.addEventListener("click", onFollowSearch);
+  document.getElementById("follow-input")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") onFollowSearch();
+  });
+  // 友達詳細シートのボタン
+  document.getElementById("btn-friend-view-tt")?.addEventListener("click", () => {
+    if (!state.selectedFriend) return;
+    document.getElementById("friend-sheet").setAttribute("aria-hidden", "true");
+    openFriendTimetableSheet(state.selectedFriend.uid);
+  });
+  document.getElementById("btn-friend-unfollow")?.addEventListener("click", async () => {
+    if (!state.selectedFriend) return;
+    if (!confirm(`@${state.selectedFriend.userName} のフォローを解除しますか？`)) return;
+    document.getElementById("friend-sheet").setAttribute("aria-hidden", "true");
+    await unfollowUser(state.selectedFriend.uid);
+  });
+  // セル詳細シートの削除ボタン
+  document.getElementById("btn-cell-delete")?.addEventListener("click", async () => {
+    if (!state.selectedCell) return;
+    if (!confirm("この授業を時間割から削除しますか？")) return;
+    document.getElementById("cell-detail-sheet").setAttribute("aria-hidden", "true");
+    const slotId = state.selectedCell.slotId;
+    state.selectedCell = null;
+    // 既存の removeCourseFromTimetable を使うが confirm はスキップ済みなのでインライン
+    if (!state.user) return;
+    const oldEntry = state.timetable.find((t) => t.slotId === slotId);
+    state.timetable = state.timetable.filter((t) => t.slotId !== slotId);
+    saveLocalTimetable(state.user.uid, state.timetable);
+    renderTimetable();
+    const fb = window.__firebase;
+    try {
+      await withRetry(() => fb.fns.deleteDoc(fb.fns.doc(fb.db, "users", state.user.uid, "timetable", slotId)));
+    } catch (e) {
+      console.error("[timetable] delete failed (local kept):", e?.code, e?.message);
+    }
+  });
 }
 
 function initAuth() {
@@ -150,16 +204,26 @@ function initAuth() {
         // 1) localStorage から先に復元 (Firestore 取得を待たずに UI 即反映)
         const cachedProfile = loadLocalProfile(user.uid);
         const cachedTimetable = loadLocalTimetable(user.uid);
+        const cachedFollows = loadLocalFollows(user.uid);
         if (cachedProfile) state.userProfile = cachedProfile;
         if (cachedTimetable) state.timetable = cachedTimetable;
+        if (cachedFollows) state.follows = cachedFollows;
+        // フォロー中ユーザーの時間割もキャッシュから復元
+        for (const f of state.follows) {
+          state.friendTimetables[f.uid] = loadLocalFriendTT(user.uid, f.uid);
+        }
         renderMeTab();
         renderFriendsTab();
         // 2) Firestore から最新を取得 → 成功したら localStorage を上書き
         try {
-          await Promise.all([loadUserProfile(), loadTimetable()]);
+          await Promise.all([loadUserProfile(), loadTimetable(), loadFollows()]);
           if (state.userProfile) saveLocalProfile(user.uid, state.userProfile);
           saveLocalTimetable(user.uid, state.timetable);
+          saveLocalFollows(user.uid, state.follows);
           renderMeTab();
+          renderFriendsTab();
+          // フォロー中ユーザーの時間割を並列取得 (バックグラウンド)
+          loadAllFriendTimetables();
         } catch (e) {
           console.warn("Firestore load error (using local cache):", e?.code || e?.message || e);
         }
@@ -167,6 +231,8 @@ function initAuth() {
         state.user = null;
         state.userProfile = null;
         state.timetable = [];
+        state.follows = [];
+        state.friendTimetables = {};
         renderMeTab();
         renderFriendsTab();
       }
@@ -307,6 +373,7 @@ function renderFriendsTab() {
   if (state.user) {
     gate.hidden = true;
     body.hidden = false;
+    renderFriendsList();
   } else {
     gate.hidden = false;
     body.hidden = true;
@@ -459,6 +526,313 @@ async function loadTimetable() {
   }
 }
 
+// === フォロー機能 ===
+// ユーザー名で完全一致検索 (userNames/{name} → users/{uid})
+async function searchUserByName(name) {
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  const key = name.trim().toLowerCase();
+  const nameSnap = await withRetry(() => fns.getDoc(fns.doc(db, "userNames", key)));
+  if (!nameSnap.exists()) return null;
+  const uid = nameSnap.data().uid;
+  if (uid === state.user.uid) return { uid, _self: true };
+  const userSnap = await withRetry(() => fns.getDoc(fns.doc(db, "users", uid)));
+  if (!userSnap.exists()) return null;
+  return { uid, ...userSnap.data() };
+}
+
+// フォロー追加: users/{自分uid}/follows/{相手uid} にミニプロフィールをキャッシュ
+async function followUser(target) {
+  if (!state.user || target.uid === state.user.uid) return;
+  const entry = {
+    uid: target.uid,
+    userName: target.userName || "",
+    displayName: target.displayName || "",
+    photoURL: target.photoURL || "",
+  };
+  // 楽観更新
+  if (!state.follows.some((f) => f.uid === target.uid)) {
+    state.follows.push(entry);
+    saveLocalFollows(state.user.uid, state.follows);
+    renderFriendsTab();
+  }
+  // Firestore に保存
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  try {
+    await withRetry(() => fns.setDoc(
+      fns.doc(db, "users", state.user.uid, "follows", target.uid),
+      { ...entry, createdAt: fns.serverTimestamp() }
+    ));
+    console.log("[follow] saved:", target.userName);
+    // 友達の時間割も取得 (バックグラウンド)
+    loadFriendTimetable(target.uid);
+  } catch (e) {
+    console.error("[follow] save failed (local kept):", e?.code, e?.message);
+  }
+}
+
+async function unfollowUser(targetUid) {
+  if (!state.user) return;
+  const idx = state.follows.findIndex((f) => f.uid === targetUid);
+  if (idx < 0) return;
+  state.follows.splice(idx, 1);
+  delete state.friendTimetables[targetUid];
+  saveLocalFollows(state.user.uid, state.follows);
+  renderFriendsTab();
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  try {
+    await withRetry(() => fns.deleteDoc(fns.doc(db, "users", state.user.uid, "follows", targetUid)));
+    console.log("[follow] deleted:", targetUid);
+  } catch (e) {
+    console.error("[follow] delete failed (local kept):", e?.code, e?.message);
+  }
+}
+
+async function loadFollows() {
+  if (!state.user) { state.follows = []; return; }
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  try {
+    const snap = await withRetry(() => fns.getDocs(fns.collection(db, "users", state.user.uid, "follows")));
+    state.follows = [];
+    snap.forEach((doc) => {
+      const d = doc.data();
+      state.follows.push({ uid: doc.id, userName: d.userName || "", displayName: d.displayName || "", photoURL: d.photoURL || "" });
+    });
+    console.log("[follows] loaded", state.follows.length, "entries");
+  } catch (e) {
+    console.error("[follows] load failed (local kept):", e?.code, e?.message);
+  }
+}
+
+// 個別の友達の時間割を取得
+async function loadFriendTimetable(friendUid) {
+  if (!state.user) return;
+  const fb = window.__firebase;
+  const { fns, db } = fb;
+  try {
+    const snap = await withRetry(() => fns.getDocs(fns.collection(db, "users", friendUid, "timetable")));
+    const tt = [];
+    snap.forEach((doc) => {
+      tt.push({ slotId: doc.id, ...doc.data() });
+    });
+    state.friendTimetables[friendUid] = tt;
+    saveLocalFriendTT(state.user.uid, friendUid, tt);
+    renderFriendsTab();
+    console.log("[friendTT]", friendUid, "loaded", tt.length);
+  } catch (e) {
+    console.error("[friendTT] load failed:", friendUid, e?.code, e?.message);
+  }
+}
+
+// 全フォロー先の時間割を並列取得
+async function loadAllFriendTimetables() {
+  if (!state.user || !state.follows.length) return;
+  await Promise.all(state.follows.map((f) => loadFriendTimetable(f.uid)));
+}
+
+// 自分の時間割 vs 友達の時間割で共通授業 (同じ slotId + 同じ courseId) を抽出
+function calculateSharedCourses(friendUid) {
+  const friendTT = state.friendTimetables[friendUid] || [];
+  if (!friendTT.length) return [];
+  const friendMap = new Map(friendTT.map((t) => [t.slotId, t]));
+  const shared = [];
+  for (const my of state.timetable) {
+    const fr = friendMap.get(my.slotId);
+    if (fr && fr.courseId === my.courseId) shared.push(my);
+  }
+  return shared;
+}
+
+function renderFriendsList() {
+  const ul = document.getElementById("friend-list");
+  if (!ul) return;
+  if (!state.follows.length) {
+    ul.innerHTML = '<li class="empty-state">まだ誰もフォローしていません</li>';
+    return;
+  }
+  ul.innerHTML = state.follows.map((f) => {
+    const shared = calculateSharedCourses(f.uid);
+    const photo = f.photoURL || "";
+    return `<li><button type="button" class="friend-card" data-fuid="${f.uid}">
+      <img src="${photo}" alt="">
+      <div class="fc-info">
+        <div class="fc-name">${escapeHtml(f.displayName || f.userName)}</div>
+        <div class="fc-username">@${escapeHtml(f.userName)}</div>
+      </div>
+      <div class="fc-shared">共通${shared.length}科目</div>
+    </button></li>`;
+  }).join("");
+  ul.querySelectorAll(".friend-card").forEach((btn) => {
+    btn.addEventListener("click", () => openFriendSheet(btn.dataset.fuid));
+  });
+}
+
+// 検索ボックスから userName を取得 → search → follow
+async function onFollowSearch() {
+  const input = document.getElementById("follow-input");
+  if (!input || !state.user) return;
+  const raw = input.value.trim();
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(raw)) {
+    alert("ユーザー名は英数字とアンダースコア (3〜20文字)");
+    return;
+  }
+  try {
+    const target = await searchUserByName(raw);
+    if (!target) { alert(`@${raw} は見つかりません`); return; }
+    if (target._self) { alert("自分自身はフォローできません"); return; }
+    if (state.follows.some((f) => f.uid === target.uid)) { alert("既にフォロー中です"); return; }
+    await followUser(target);
+    input.value = "";
+  } catch (e) {
+    console.error("[search] failed:", e);
+    alert("検索に失敗: " + (e?.code || e?.message || e));
+  }
+}
+
+// 友達詳細シート
+function openFriendSheet(friendUid) {
+  const f = state.follows.find((x) => x.uid === friendUid);
+  if (!f) return;
+  state.selectedFriend = f;
+  const sheet = document.getElementById("friend-sheet");
+  if (!sheet) return;
+  sheet.setAttribute("aria-hidden", "false");
+  document.getElementById("friend-sheet-title").textContent = `@${f.userName}`;
+  const detail = document.getElementById("friend-detail");
+  if (!detail) return;
+  const shared = calculateSharedCourses(friendUid);
+  const friendTT = state.friendTimetables[friendUid];
+  let coursesHtml;
+  if (friendTT === undefined) {
+    coursesHtml = '<div class="empty-state">時間割を読み込み中…</div>';
+  } else if (!shared.length) {
+    coursesHtml = '<div class="empty-state">共通の授業はまだありません</div>';
+  } else {
+    const dayOrder = { "月": 1, "火": 2, "水": 3, "木": 4, "金": 5, "土": 6 };
+    shared.sort((a, b) => {
+      if (a.semester !== b.semester) return a.semester === "spring" ? -1 : 1;
+      if (a.day !== b.day) return (dayOrder[a.day] || 9) - (dayOrder[b.day] || 9);
+      return a.period - b.period;
+    });
+    coursesHtml = `<ul class="fd-course-list">${shared.map((c) => {
+      const sem = c.semester === "spring" ? "春" : "秋";
+      return `<li>
+        <span class="badge">${sem}${c.day}${c.period}</span>
+        <span class="cn">${escapeHtml(c.courseName)}</span>
+        <span class="rm">${c.room}</span>
+      </li>`;
+    }).join("")}</ul>`;
+  }
+  detail.innerHTML = `
+    <div class="fd-profile">
+      <img src="${f.photoURL || ''}" alt="">
+      <div>
+        <div class="fd-name">${escapeHtml(f.displayName || f.userName)}</div>
+        <div class="fd-username">@${escapeHtml(f.userName)}</div>
+      </div>
+    </div>
+    <div class="fd-section-title">共通授業 ${shared.length}科目</div>
+    ${coursesHtml}
+  `;
+}
+
+// 友達のフル時間割マトリクスを表示
+function openFriendTimetableSheet(friendUid) {
+  const f = state.follows.find((x) => x.uid === friendUid);
+  if (!f) return;
+  const sheet = document.getElementById("friend-tt-sheet");
+  if (!sheet) return;
+  sheet.setAttribute("aria-hidden", "false");
+  document.getElementById("friend-tt-title").textContent = `@${f.userName} の時間割`;
+  const root = document.getElementById("friend-tt-body");
+  if (!root) return;
+  const tt = state.friendTimetables[friendUid] || [];
+  const days = ["月", "火", "水", "木", "金", "土"];
+  const periods = [1, 2, 3, 4, 5, 6, 7];
+  const sems = [{ key: "spring", label: "春学期" }, { key: "fall", label: "秋学期" }];
+  const showSems = sems.filter((s) => s.key === state.semester);
+  const mySlotIds = new Set(state.timetable.map((t) => `${t.semester}_${t.day}_${t.period}_${t.courseId}`));
+  let html = "";
+  for (const sem of showSems) {
+    const entries = tt.filter((t) => t.semester === sem.key);
+    const cellMap = {};
+    for (const e of entries) cellMap[`${e.day}_${e.period}`] = e;
+    html += `<div class="tt-section">
+      <div class="tt-section-title">${sem.label}</div>
+      <table class="tt-grid"><thead><tr><th></th>${days.map((d) => `<th>${d}</th>`).join("")}</tr></thead><tbody>
+        ${periods.map((p) => `<tr><th>${p}</th>${days.map((d) => {
+          const e = cellMap[`${d}_${p}`];
+          if (e) {
+            const isShared = mySlotIds.has(`${e.semester}_${e.day}_${e.period}_${e.courseId}`);
+            return `<td class="tt-cell tt-filled${isShared ? ' tt-shared' : ''}">
+              <div class="tt-cell-name">${escapeHtml(e.courseName)}</div>
+              <div class="tt-cell-room">${e.room}</div>
+            </td>`;
+          }
+          return `<td class="tt-cell tt-empty-readonly"></td>`;
+        }).join("")}</tr>`).join("")}
+      </tbody></table>
+    </div>`;
+  }
+  if (!tt.length) html = '<div class="empty-state">時間割を読み込み中、または未登録です</div>';
+  root.innerHTML = html;
+}
+
+// セル詳細シート (マイのスケジュール表で埋まったセルをタップ)
+function openCellDetailSheet(slotId) {
+  const entry = state.timetable.find((t) => t.slotId === slotId);
+  if (!entry) return;
+  state.selectedCell = entry;
+  const sheet = document.getElementById("cell-detail-sheet");
+  if (!sheet) return;
+  sheet.setAttribute("aria-hidden", "false");
+  const sem = entry.semester === "spring" ? "春" : "秋";
+  document.getElementById("cell-detail-title").textContent = `${sem}${entry.day}${entry.period}限 ${entry.courseName}`;
+  // この授業を取ってるフォロー中ユーザー
+  const takers = state.follows.filter((f) => {
+    const tt = state.friendTimetables[f.uid] || [];
+    return tt.some((t) => t.slotId === slotId && t.courseId === entry.courseId);
+  });
+  const body = document.getElementById("cell-detail-body");
+  if (!body) return;
+  let listHtml;
+  if (!state.follows.length) {
+    listHtml = '<div class="empty-state">まだ誰もフォローしていません</div>';
+  } else if (!takers.length) {
+    listHtml = '<div class="empty-state">この授業を取ってるフォロー中の人はいません</div>';
+  } else {
+    listHtml = `<ul class="friend-list" style="margin-top:0">${takers.map((f) => `
+      <li><button type="button" class="friend-card" data-fuid="${f.uid}">
+        <img src="${f.photoURL || ''}" alt="">
+        <div class="fc-info">
+          <div class="fc-name">${escapeHtml(f.displayName || f.userName)}</div>
+          <div class="fc-username">@${escapeHtml(f.userName)}</div>
+        </div>
+      </button></li>
+    `).join("")}</ul>`;
+  }
+  body.innerHTML = `
+    <div class="fd-profile">
+      <div>
+        <div class="fd-name">${escapeHtml(entry.courseName)}</div>
+        <div class="fd-username">${sem}${entry.day}${entry.period}限 · ${entry.room}${entry.professor ? ' · ' + escapeHtml(entry.professor.slice(0, 30)) : ''}</div>
+      </div>
+    </div>
+    <div class="fd-section-title">この授業を取ってる友達 ${takers.length}人</div>
+    ${listHtml}
+  `;
+  // 友達カードタップで友達詳細シートを開く
+  body.querySelectorAll(".friend-card").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      sheet.setAttribute("aria-hidden", "true");
+      openFriendSheet(btn.dataset.fuid);
+    });
+  });
+}
+
 function renderTimetable() {
   const root = document.getElementById("timetable-list");
   if (!root) return;
@@ -493,9 +867,9 @@ function renderTimetable() {
     </div>`;
   }
   root.innerHTML = html;
-  // 埋まってるセルタップで削除
+  // 埋まってるセルタップ → セル詳細シート (この授業を取ってる友達一覧 + 削除)
   root.querySelectorAll(".tt-filled").forEach((cell) => {
-    cell.addEventListener("click", () => removeCourseFromTimetable(cell.dataset.slot));
+    cell.addEventListener("click", () => openCellDetailSheet(cell.dataset.slot));
   });
   // 空セルタップ → その曜日・時限の該当授業を出す
   root.querySelectorAll(".tt-empty").forEach((cell) => {

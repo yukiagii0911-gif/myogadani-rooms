@@ -1153,3 +1153,176 @@ button:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2p
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 友達カード */
+.friend-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.friend-list .empty-state {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--subtext);
+  font-size: 12px;
+}
+.friend-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  color: inherit;
+}
+.friend-card:active { background: var(--bg); }
+.friend-card img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--bg);
+  object-fit: cover;
+}
+.friend-card .fc-info {
+  flex: 1;
+  min-width: 0;
+}
+.friend-card .fc-name {
+  font-size: 14px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.friend-card .fc-username {
+  font-size: 11px;
+  color: var(--subtext);
+}
+.friend-card .fc-shared {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-deep);
+  flex-shrink: 0;
+}
+
+/* 友達詳細シート / セル詳細シート */
+.friend-detail, .cell-detail-body {
+  padding: 12px 16px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.fd-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.fd-profile img {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--bg);
+}
+.fd-name { font-size: 16px; font-weight: 700; }
+.fd-username { font-size: 12px; color: var(--subtext); }
+.fd-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--subtext);
+  letter-spacing: 0.08em;
+  margin: 8px 0 6px;
+}
+.fd-course-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.fd-course-list li {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.fd-course-list li:last-child { border-bottom: none; }
+.fd-course-list .badge {
+  background: var(--bg);
+  font-size: 10.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.fd-course-list .cn {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fd-course-list .rm {
+  font-size: 11px;
+  color: var(--subtext);
+  white-space: nowrap;
+}
+
+/* シート下のアクション ボタン */
+.friend-actions {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  flex-direction: column;
+}
+.btn-primary, .btn-secondary, .btn-danger {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.btn-secondary {
+  background: var(--bg);
+  color: var(--text);
+}
+.btn-danger {
+  background: var(--bg);
+  color: var(--busy-deep, #c87a7a);
+  border-color: var(--busy-deep, #c87a7a);
+}
+.btn-primary:active, .btn-secondary:active, .btn-danger:active { opacity: 0.7; }
+
+/* 友達のスケジュール表シート */
+.friend-tt-body {
+  padding: 12px 16px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+/* 友達スケジュール表: 自分も取ってる授業はハイライト */
+.tt-cell.tt-shared {
+  background: var(--accent, #a5d8ff) !important;
+}
+.tt-cell.tt-empty-readonly {
+  background: var(--bg);
+  cursor: default;
+}
+.tt-cell.tt-empty-readonly:active { opacity: 1; }

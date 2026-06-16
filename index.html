@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#FAF6F0">
 <title>茗荷谷ビューワー</title>
-<link rel="stylesheet" href="style.css?v=20260615l">
+<link rel="stylesheet" href="style.css?v=20260616a">
 </head>
 <body>
 
@@ -53,6 +53,52 @@
   <section class="content" id="content"></section>
 
 </main>
+
+<!-- 友達詳細シート (共通授業一覧 + フル時間割を見るボタン) -->
+<aside class="sheet friend-sheet" id="friend-sheet" aria-hidden="true">
+  <div class="sheet-backdrop" data-close-sheet="friend-sheet"></div>
+  <div class="sheet-body" role="dialog">
+    <div class="sheet-handle"></div>
+    <div class="picker-head">
+      <div class="picker-title" id="friend-sheet-title">友達詳細</div>
+      <button class="icon-btn icon-btn-sm" data-close-sheet="friend-sheet" aria-label="閉じる" data-icon="close"></button>
+    </div>
+    <div class="friend-detail" id="friend-detail"></div>
+    <div class="friend-actions">
+      <button class="btn-primary" id="btn-friend-view-tt">スケジュール表を見る</button>
+      <button class="btn-secondary" id="btn-friend-unfollow">フォロー解除</button>
+    </div>
+  </div>
+</aside>
+
+<!-- 友達スケジュール表シート -->
+<aside class="sheet friend-tt-sheet" id="friend-tt-sheet" aria-hidden="true">
+  <div class="sheet-backdrop" data-close-sheet="friend-tt-sheet"></div>
+  <div class="sheet-body" role="dialog">
+    <div class="sheet-handle"></div>
+    <div class="picker-head">
+      <div class="picker-title" id="friend-tt-title">時間割</div>
+      <button class="icon-btn icon-btn-sm" data-close-sheet="friend-tt-sheet" aria-label="閉じる" data-icon="close"></button>
+    </div>
+    <div class="friend-tt-body" id="friend-tt-body"></div>
+  </div>
+</aside>
+
+<!-- セル詳細シート (マイのスケジュール表で埋まったセルをタップした時) -->
+<aside class="sheet cell-detail-sheet" id="cell-detail-sheet" aria-hidden="true">
+  <div class="sheet-backdrop" data-close-sheet="cell-detail-sheet"></div>
+  <div class="sheet-body" role="dialog">
+    <div class="sheet-handle"></div>
+    <div class="picker-head">
+      <div class="picker-title" id="cell-detail-title">授業詳細</div>
+      <button class="icon-btn icon-btn-sm" data-close-sheet="cell-detail-sheet" aria-label="閉じる" data-icon="close"></button>
+    </div>
+    <div class="cell-detail-body" id="cell-detail-body"></div>
+    <div class="friend-actions">
+      <button class="btn-danger" id="btn-cell-delete">この授業を時間割から削除</button>
+    </div>
+  </div>
+</aside>
 
 <!-- コース検索シート (時間割登録用) -->
 <aside class="sheet course-picker-sheet" id="course-picker" aria-hidden="true">
@@ -213,6 +259,6 @@
   if (typeof window.__onFirebaseReady === "function") window.__onFirebaseReady();
 </script>
 
-<script type="module" src="app.js?v=20260615m"></script>
+<script type="module" src="app.js?v=20260616a"></script>
 </body>
 </html>
