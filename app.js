@@ -462,11 +462,7 @@ async function loadTimetable() {
 function renderTimetable() {
   const root = document.getElementById("timetable-list");
   if (!root) return;
-  if (!state.timetable.length) {
-    root.innerHTML = '<div class="empty-state">まだ授業を登録していません</div>';
-    return;
-  }
-  // 春・秋 をそれぞれ縦横マトリクス (時限×曜日) で描画
+  // 登録の有無に関係なく常にカレンダーを表示 (空セルからも追加できる)
   const days = ["月", "火", "水", "木", "金", "土"];
   const periods = [1, 2, 3, 4, 5, 6, 7];
   const sems = [
