@@ -74,6 +74,7 @@ async function init() {
   bindTabs();
   bindAuth();
   bindCourseSearch();
+  bindRoomSearch();
   initAuth();
   render();
   renderMeTab();
@@ -397,6 +398,71 @@ function renderFriendsTab() {
     gate.hidden = false;
     body.hidden = true;
   }
+}
+
+// === 教室検索シート (ヘッダの検索ボタン) ===
+function bindRoomSearch() {
+  document.getElementById("btn-search")?.addEventListener("click", openRoomSearch);
+  const input = document.getElementById("room-search-input");
+  if (input) {
+    let timer = null;
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => renderRoomSearchResults(input.value.trim()), 100);
+    });
+  }
+  const ul = document.getElementById("room-search-results");
+  if (ul) {
+    ul.addEventListener("click", (e) => {
+      const el = e.target.closest("[data-room]");
+      if (!el) return;
+      document.getElementById("search-sheet")?.setAttribute("aria-hidden", "true");
+      openSheet(el.dataset.room);
+    });
+  }
+}
+
+function openRoomSearch() {
+  const sheet = document.getElementById("search-sheet");
+  if (!sheet) return;
+  sheet.setAttribute("aria-hidden", "false");
+  const input = document.getElementById("room-search-input");
+  if (input) {
+    input.value = "";
+    renderRoomSearchResults("");
+    setTimeout(() => input.focus(), 100);
+  }
+}
+
+function renderRoomSearchResults(query) {
+  const ul = document.getElementById("room-search-results");
+  if (!ul) return;
+  if (!query) {
+    ul.innerHTML = '<li class="empty-state">教室番号を入力してください</li>';
+    return;
+  }
+  const q = query.toLowerCase();
+  const hits = ROOMS.filter((r) => {
+    if (r.room.toLowerCase().includes(q)) return true;
+    if ((r.tags || []).some((t) => String(t).toLowerCase().includes(q))) return true;
+    return false;
+  }).slice(0, 30);
+  if (!hits.length) {
+    ul.innerHTML = '<li class="empty-state">該当する教室はありません</li>';
+    return;
+  }
+  ul.innerHTML = hits.map((r) => {
+    const floorDisp = r.floor === null ? "?" : (r.floor < 0 ? `B${Math.abs(r.floor)}` : `${r.floor}F`);
+    const tagsHtml = (r.tags || []).slice(0, 3).map((t) => `<span class="badge">${escapeHtml(String(t))}</span>`).join("");
+    return `<li><button type="button" class="course-result-btn" data-room="${r.room}">
+      <div class="course-name">${r.room}</div>
+      <div class="course-meta">
+        <span class="badge">${floorDisp}</span>
+        <span class="badge">${r.wing || "?"}棟</span>
+        ${tagsHtml}
+      </div>
+    </button></li>`;
+  }).join("");
 }
 
 // === コース検索シート ===

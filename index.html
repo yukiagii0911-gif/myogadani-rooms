@@ -18,8 +18,7 @@
     </div>
   </div>
   <div class="hd-right">
-    <button class="icon-btn" id="btn-search" aria-label="検索" data-icon="search"></button>
-    <button class="icon-btn" id="btn-profile" aria-label="マイページ" data-icon="account"></button>
+    <button class="icon-btn" id="btn-search" aria-label="教室を検索" data-icon="search"></button>
   </div>
 </header>
 
@@ -97,6 +96,24 @@
     <div class="friend-actions">
       <button class="btn-danger" id="btn-cell-delete">この授業を時間割から削除</button>
     </div>
+  </div>
+</aside>
+
+<!-- 教室検索シート (ヘッダの検索ボタン用) -->
+<aside class="sheet" id="search-sheet" aria-hidden="true">
+  <div class="sheet-backdrop" data-close-sheet="search-sheet"></div>
+  <div class="sheet-body" role="dialog">
+    <div class="sheet-handle"></div>
+    <div class="picker-head">
+      <div class="picker-title">教室を検索</div>
+      <button class="icon-btn icon-btn-sm" data-close-sheet="search-sheet" aria-label="閉じる" data-icon="close"></button>
+    </div>
+    <div class="course-search">
+      <input type="text" id="room-search-input" placeholder="教室番号 (例: 1W01, B1C16) で検索" autocomplete="off">
+    </div>
+    <ul class="course-results" id="room-search-results">
+      <li class="empty-state">教室番号を入力してください</li>
+    </ul>
   </div>
 </aside>
 
@@ -259,6 +276,6 @@
   if (typeof window.__onFirebaseReady === "function") window.__onFirebaseReady();
 </script>
 
-<script type="module" src="app.js?v=20260616e"></script>
+<script type="module" src="app.js?v=20260616f"></script>
 </body>
 </html>
