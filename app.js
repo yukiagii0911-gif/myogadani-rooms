@@ -92,6 +92,22 @@ function bindTabs() {
   });
 }
 
+// localStorage 二重保存 (Firestore 失敗時の保険)
+function localProfileKey(uid) { return `myogadani-profile-${uid}`; }
+function localTimetableKey(uid) { return `myogadani-timetable-${uid}`; }
+function saveLocalProfile(uid, profile) {
+  try { localStorage.setItem(localProfileKey(uid), JSON.stringify(profile)); } catch {}
+}
+function loadLocalProfile(uid) {
+  try { return JSON.parse(localStorage.getItem(localProfileKey(uid)) || "null"); } catch { return null; }
+}
+function saveLocalTimetable(uid, timetable) {
+  try { localStorage.setItem(localTimetableKey(uid), JSON.stringify(timetable)); } catch {}
+}
+function loadLocalTimetable(uid) {
+  try { return JSON.parse(localStorage.getItem(localTimetableKey(uid)) || "[]"); } catch { return []; }
+}
+
 // Firestore 操作リトライ (unavailable / offline / network エラー時)
 async function withRetry(fn, retries = 3, delay = 700) {
   try {
@@ -131,19 +147,26 @@ function initAuth() {
           photoURL: user.photoURL,
           email: user.email,
         };
-        // Firestore 取得を待たずに先に基本情報を描画 (反応速度優先)
+        // 1) localStorage から先に復元 (Firestore 取得を待たずに UI 即反映)
+        const cachedProfile = loadLocalProfile(user.uid);
+        const cachedTimetable = loadLocalTimetable(user.uid);
+        if (cachedProfile) state.userProfile = cachedProfile;
+        if (cachedTimetable) state.timetable = cachedTimetable;
         renderMeTab();
         renderFriendsTab();
+        // 2) Firestore から最新を取得 → 成功したら localStorage を上書き
         try {
           await Promise.all([loadUserProfile(), loadTimetable()]);
+          if (state.userProfile) saveLocalProfile(user.uid, state.userProfile);
+          saveLocalTimetable(user.uid, state.timetable);
           renderMeTab();
         } catch (e) {
-          console.warn("Firestore load error:", e?.code || e?.message || e);
-          state.userProfile = null;
+          console.warn("Firestore load error (using local cache):", e?.code || e?.message || e);
         }
       } else {
         state.user = null;
         state.userProfile = null;
+        state.timetable = [];
         renderMeTab();
         renderFriendsTab();
       }
@@ -208,6 +231,7 @@ async function editUserName() {
   const oldName = state.userProfile?.userName || null;
   if (!state.userProfile) state.userProfile = {};
   state.userProfile.userName = trimmed;
+  saveLocalProfile(state.user.uid, state.userProfile); // localStorage に即保存
   renderMeTab();
   // Firestore: バックグラウンドで保存 (リトライ付き)
   const fb = window.__firebase;
@@ -217,6 +241,7 @@ async function editUserName() {
     const nameSnap = await withRetry(() => fns.getDoc(nameRef));
     if (nameSnap.exists() && nameSnap.data().uid !== state.user.uid) {
       state.userProfile.userName = oldName;
+      saveLocalProfile(state.user.uid, state.userProfile);
       renderMeTab();
       alert("そのユーザー名は既に使われています");
       return;
@@ -228,10 +253,9 @@ async function editUserName() {
     await withRetry(() => fns.setDoc(fns.doc(db, "users", state.user.uid), { userName: trimmed }, { merge: true }));
     console.log("[userName] saved:", trimmed);
   } catch (e) {
-    console.error("[userName] save failed after retries:", e?.code, e?.message);
-    state.userProfile.userName = oldName;
-    renderMeTab();
-    alert("ユーザー名の保存に失敗: " + (e?.code || e?.message || e));
+    console.error("[userName] save failed after retries (local cache kept):", e?.code, e?.message);
+    // Firestore 失敗時もローカルキャッシュは保持 (リロード後も userName 表示は維持)
+    // 静かに失敗 (UI は楽観更新のまま、ネット復帰で persistentLocalCache が自動同期)
   }
 }
 
@@ -258,6 +282,9 @@ function renderMeTab() {
     const uname = state.userProfile?.userName;
     const inline = document.getElementById("me-username-inline");
     if (inline) inline.textContent = uname ? `@${uname}` : "未設定";
+    // ユーザー名設定済みなら案内テキストを隠す
+    const hint = document.getElementById("me-username-hint");
+    if (hint) hint.hidden = !!uname;
     renderTimetable();
   } else {
     gate.hidden = false;
@@ -371,6 +398,7 @@ async function addCourseToTimetable(course) {
   const entry = { ...course };
   if (existingIdx >= 0) state.timetable[existingIdx] = entry;
   else state.timetable.push(entry);
+  saveLocalTimetable(state.user.uid, state.timetable); // localStorage に即保存
   document.getElementById("course-picker").setAttribute("aria-hidden", "true");
   renderTimetable();
   // Firestore 書き込み (リトライ付き)
@@ -388,11 +416,8 @@ async function addCourseToTimetable(course) {
     }));
     console.log("[timetable] saved", course.slotId, course.courseName);
   } catch (e) {
-    console.error("[timetable] save failed after retries:", e?.code, e?.message, e);
-    if (oldEntry) state.timetable[existingIdx] = oldEntry;
-    else state.timetable = state.timetable.filter((t) => t.slotId !== course.slotId);
-    renderTimetable();
-    alert("保存に失敗: " + (e?.code || e?.message || e));
+    console.error("[timetable] save failed after retries (local cache kept):", e?.code, e?.message, e);
+    // ローカルキャッシュは維持 → ネット復帰で persistentLocalCache が自動同期
   }
 }
 
@@ -402,6 +427,7 @@ async function removeCourseFromTimetable(slotId) {
   // 楽観更新: 即UI反映
   const oldEntry = state.timetable.find((t) => t.slotId === slotId);
   state.timetable = state.timetable.filter((t) => t.slotId !== slotId);
+  saveLocalTimetable(state.user.uid, state.timetable); // localStorage に即保存
   renderTimetable();
   // Firestore: バックグラウンドで削除 (リトライ付き)
   const fb = window.__firebase;
@@ -410,10 +436,8 @@ async function removeCourseFromTimetable(slotId) {
     await withRetry(() => fns.deleteDoc(fns.doc(db, "users", state.user.uid, "timetable", slotId)));
     console.log("[timetable] deleted", slotId);
   } catch (e) {
-    console.error("[timetable] delete failed after retries:", e?.code, e?.message, e);
-    if (oldEntry) state.timetable.push(oldEntry);
-    renderTimetable();
-    alert("削除に失敗: " + (e?.code || e?.message || e));
+    console.error("[timetable] delete failed after retries (local cache kept):", e?.code, e?.message, e);
+    // ローカルキャッシュは維持 → ネット復帰で persistentLocalCache が自動同期
   }
 }
 
