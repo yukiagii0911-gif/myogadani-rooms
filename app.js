@@ -730,8 +730,7 @@ function renderFriendsList() {
     return `<li><button type="button" class="friend-card" data-fuid="${f.uid}">
       <img src="${photo}" alt="">
       <div class="fc-info">
-        <div class="fc-name">${escapeHtml(f.displayName || f.userName)}</div>
-        <div class="fc-username">@${escapeHtml(f.userName)}</div>
+        <div class="fc-name">@${escapeHtml(f.userName)}</div>
       </div>
       <div class="fc-shared">共通${shared.length}科目</div>
     </button></li>`;
@@ -1677,11 +1676,11 @@ function openSheet(roomId) {
       <div class="sheet-section">
         <div class="sheet-section-title">いまの状況</div>
         <div style="display:flex; gap:10px; align-items:center;">
-          <span class="badge friends">👥 ${friendsHere.length + (inMarker === "in" ? 1 : 0)}人</span>
+          <span class="badge friends">👥 ${friendsHere.length}人</span>
           ${
             inMarker === "in"
               ? `<span style="font-size:12px; color:var(--free-deep); font-weight:600;">あなたが入室中</span>`
-              : inMarker === "planned"
+              : inMarker === "booked"
               ? `<span style="font-size:12px; color:var(--accent-deep); font-weight:600;">あなたが「使う予定」マーク中</span>`
               : ""
           }
