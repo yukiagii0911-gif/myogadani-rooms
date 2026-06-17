@@ -1777,14 +1777,14 @@ function openSheet(roomId) {
       </div>
     `;
 
-    // いまここにいる人 (フォロー関係なく全員)
+    // いまいる友達 (フォロー中+自分のみ)
     html += `
       <div class="sheet-section">
-        <div class="sheet-section-title">いま教室にいる人</div>
+        <div class="sheet-section-title">いまいる友達</div>
         ${
-          peopleHere.length
-            ? `<div class="friend-list">${peopleHere.map(friendRow).join("")}</div>`
-            : `<div class="empty-mini">いまここに誰もいません</div>`
+          friendsHere.length
+            ? `<div class="friend-list">${friendsHere.map(friendRow).join("")}</div>`
+            : `<div class="empty-mini">いまここに友達はいません</div>`
         }
       </div>
     `;
