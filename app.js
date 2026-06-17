@@ -1704,7 +1704,8 @@ function openSheet(roomId) {
   const courses = getRoomCourses(roomId, state.semester, state.day, state.period);
   const isCurrentlyBusy = courses.length > 0;
   const next = nextCoursesToday(roomId, state.semester, state.day, state.period);
-  const friendsHere = friendsInRoom(roomId);
+  const friendsHere = friendsInRoom(roomId); // 同授業フィルター用 (フォロー中の人のみ)
+  const peopleHere = [...presenceListForRoom(roomId, "in"), ...presenceListForRoom(roomId, "booked")]; // この教室にいる全員 (フォロー外含む)
   const inMarker = myPresenceStatus(roomId); // "in" | "booked" | null
 
   const tagsHtml = (room.tags || []).map(
@@ -1764,7 +1765,7 @@ function openSheet(roomId) {
       <div class="sheet-section">
         <div class="sheet-section-title">いまの状況</div>
         <div style="display:flex; gap:10px; align-items:center;">
-          <span class="badge friends">👥 ${friendsHere.length}人</span>
+          <span class="badge friends">👥 ${peopleHere.length}人</span>
           ${
             inMarker === "in"
               ? `<span style="font-size:12px; color:var(--free-deep); font-weight:600;">あなたが入室中</span>`
@@ -1776,14 +1777,14 @@ function openSheet(roomId) {
       </div>
     `;
 
-    // いる友達
+    // いまここにいる人 (フォロー関係なく全員)
     html += `
       <div class="sheet-section">
-        <div class="sheet-section-title">いる友達</div>
+        <div class="sheet-section-title">いま教室にいる人</div>
         ${
-          friendsHere.length
-            ? `<div class="friend-list">${friendsHere.map(friendRow).join("")}</div>`
-            : `<div class="empty-mini">いまここに友達はいません</div>`
+          peopleHere.length
+            ? `<div class="friend-list">${peopleHere.map(friendRow).join("")}</div>`
+            : `<div class="empty-mini">いまここに誰もいません</div>`
         }
       </div>
     `;
