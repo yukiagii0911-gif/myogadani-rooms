@@ -1,4 +1,4 @@
-const CACHE_NAME = "myogadani-v20260616i";
+const CACHE_NAME = "myogadani-v20260617a";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -8,7 +8,9 @@ const APP_SHELL = [
   "./icons.js",
   "./data/schedule.json",
   "./manifest.json",
-  "./icons/app-icon.svg"
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/apple-touch-icon.png"
 ];
 
 self.addEventListener("install", (e) => {
