@@ -1,0 +1,20 @@
+{
+  "name": "茗荷谷ビューワー",
+  "short_name": "茗荷谷",
+  "description": "中央大学茗荷谷キャンパスの教室空き状況",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FAF6F0",
+  "theme_color": "#FAF6F0",
+  "orientation": "portrait",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
