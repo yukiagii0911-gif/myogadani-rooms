@@ -1355,6 +1355,8 @@ function render() {
     renderMapView();
     setViewToggle("map");
   }
+  // 動的に挿入された data-icon を SVG に置換 (リスト内の人マーク等)
+  injectIcons(document.getElementById("content"));
 }
 
 function syncPills() {
@@ -1441,17 +1443,15 @@ function renderListView() {
         (t) => `<span class="badge tag">${t}</span>`
       ).join("");
       const bigBadge = r.kind === "big" ? `<span class="badge big">大教室</span>` : "";
-      let peopleBadge = "";
-      if (here > 0) peopleBadge = `<span class="badge friends">👥 ${here}人</span>`;
-      // 空きで人がいる場合、メイン行を「空き · 〇人いる」に変えて気づきやすく
-      const mainLine = here > 0 ? `空き · 👥 ${here}人いる` : "空き";
+      const peopleBadge = here > 0
+        ? `<span class="badge friends"><span data-icon="account"></span>${here}人</span>`
+        : "";
       html += `
         <button class="list-item" data-room="${r.room}">
           <span class="dot free"></span>
           <span class="room-id">${r.room}</span>
           <span class="body">
-            <span class="room-line">${mainLine}</span>
-            <span class="room-meta">${nextStr}</span>
+            <span class="room-line room-line-lg">${nextStr}</span>
           </span>
           <span class="badges">
             ${peopleBadge}

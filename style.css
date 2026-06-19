@@ -294,6 +294,20 @@ button:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2p
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.list-item .room-line-lg {
+  font-size: 16px;
+  font-weight: 600;
+}
+.list-item .badge.friends [data-icon] {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  margin-right: 2px;
+}
+.list-item .badge.friends [data-icon] svg {
+  width: 100%;
+  height: 100%;
+}
 .list-item .room-meta {
   font-size: 11px;
   color: var(--subtext);
