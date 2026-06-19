@@ -1413,7 +1413,10 @@ function renderListView() {
       if (next.length > 0) {
         const startMin = toMin(PERIOD_TIMES[next[0].period][0]);
         const diff = Math.max(0, startMin - nowMin);
-        nextStr = `あと${diff}分`;
+        const h = Math.floor(diff / 60);
+        const m = diff % 60;
+        const hm = h > 0 && m > 0 ? `${h}時間${m}分` : h > 0 ? `${h}時間` : `${m}分`;
+        nextStr = `あと${hm}`;
       } else {
         nextStr = "今日この後の授業なし";
       }
