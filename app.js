@@ -56,7 +56,7 @@ const state = {
   selectedFriend: null, // 友達詳細シートで開いている friend
   selectedCell: null,   // セル詳細シートで開いている timetable エントリ
   // 全ユーザーの入室・予約状況 (Firestore リアルタイム同期)
-  // { [uid]: { roomId, status: "in"|"booked"|null, userName, displayName, photoURL, updatedAt } }
+  // { [uid]: { roomId, status: "in"|null, userName, photoURL, updatedAt } }
   allPresence: {},
   presenceUnsub: null,  // onSnapshot 解除関数
 };
@@ -649,7 +649,7 @@ function unsubscribePresence() {
   state.allPresence = {};
 }
 
-// 自分の入室・予約状態を更新 (status: "in" | "booked" | null = 退室)
+// 自分の入室状態を更新 (status: "in" | null = 退室)
 async function setMyPresence(roomId, status) {
   if (!state.user) { alert("ログインが必要です"); return; }
   const fb = window.__firebase;
@@ -1316,20 +1316,15 @@ function presenceListForRoom(roomId, status) {
   }
   return out;
 }
-// フォロー中ユーザー (+ 自分) のうちその教室にいる人 (status 問わず)
+// フォロー中ユーザー (+ 自分) のうちその教室にいる人
 function friendsInRoom(roomId) {
-  return [...presenceListForRoom(roomId, "in"), ...presenceListForRoom(roomId, "booked")]
-    .filter((p) => p.isMe || p.isFollow);
+  return presenceListForRoom(roomId, "in").filter((p) => p.isMe || p.isFollow);
 }
 // 「いま入室中」の人数 (全ユーザー)
 function peopleInRoom(roomId) {
   return presenceListForRoom(roomId, "in").length;
 }
-// 「予定」の人数 (全ユーザー)
-function plannersForRoom(roomId) {
-  return presenceListForRoom(roomId, "booked").length;
-}
-// 自分の現在の入室状態を取得 ("in" | "booked" | null)
+// 自分の現在の入室状態を取得 ("in" | null)
 function myPresenceStatus(roomId) {
   if (!state.user) return null;
   const p = state.allPresence[state.user.uid];
@@ -1401,7 +1396,7 @@ function renderListView() {
     else busy.push({ room: r, course: courses[0] });
   }
 
-  // friendsByRoom は使われていないので削除 (現状の peopleInRoom / plannersForRoom が allPresence ベースで動く)
+  // friendsByRoom は使われていないので削除 (現状の peopleInRoom が allPresence ベースで動く)
   const friendsByRoom = {};
 
   let html = "";
@@ -1411,7 +1406,6 @@ function renderListView() {
     html += `<div class="list-section-head">空き教室 (${free.length}室)</div>`;
     for (const r of free) {
       const here = peopleInRoom(r.room);
-      const planned = plannersForRoom(r.room);
       const next = nextCoursesToday(r.room, state.semester, state.day, state.period);
       const nextStr =
         next.length > 0
@@ -1423,7 +1417,6 @@ function renderListView() {
       const bigBadge = r.kind === "big" ? `<span class="badge big">大教室</span>` : "";
       let peopleBadge = "";
       if (here > 0) peopleBadge = `<span class="badge friends">👥 ${here}人</span>`;
-      else if (planned > 0) peopleBadge = `<span class="badge tag">予定 ${planned}</span>`;
       // 空きで人がいる場合、メイン行を「空き · 〇人いる」に変えて気づきやすく
       const mainLine = here > 0 ? `空き · 👥 ${here}人いる` : "空き";
       html += `
@@ -1705,8 +1698,8 @@ function openSheet(roomId) {
   const isCurrentlyBusy = courses.length > 0;
   const next = nextCoursesToday(roomId, state.semester, state.day, state.period);
   const friendsHere = friendsInRoom(roomId); // 同授業フィルター用 (フォロー中の人のみ)
-  const peopleHere = [...presenceListForRoom(roomId, "in"), ...presenceListForRoom(roomId, "booked")]; // この教室にいる全員 (フォロー外含む)
-  const inMarker = myPresenceStatus(roomId); // "in" | "booked" | null
+  const peopleHere = presenceListForRoom(roomId, "in"); // この教室にいる全員 (フォロー外含む)
+  const inMarker = myPresenceStatus(roomId); // "in" | null
 
   const tagsHtml = (room.tags || []).map(
     (t) => `<span class="badge tag">${t}</span>`
@@ -1769,8 +1762,6 @@ function openSheet(roomId) {
           ${
             inMarker === "in"
               ? `<span style="font-size:12px; color:var(--free-deep); font-weight:600;">あなたが入室中</span>`
-              : inMarker === "booked"
-              ? `<span style="font-size:12px; color:var(--accent-deep); font-weight:600;">あなたが「使う予定」マーク中</span>`
               : ""
           }
         </div>
@@ -1797,10 +1788,6 @@ function openSheet(roomId) {
             ? `<button class="action-btn exit" data-action="exit"><span data-icon="exit-room"></span> 退室する</button>`
             : `<button class="action-btn in-room" data-action="enter"><span data-icon="enter-room"></span> 入室する</button>`
         }
-        <button class="action-btn ${inMarker === "booked" ? "primary" : "secondary"}" data-action="bookmark">
-          <span data-icon="bookmark"></span>
-          ${inMarker === "booked" ? "予約解除" : "使う予定 (仮)"}
-        </button>
       </div>
     `;
   }
@@ -1858,25 +1845,16 @@ new MutationObserver(applyScrollLock).observe(document.body, {
 });
 
 function handleAction(action, roomId) {
-  if (!state.user) { alert("入室・予約にはログインが必要です"); return; }
-  const cur = myPresenceStatus(roomId);
+  if (!state.user) { alert("入室にはログインが必要です"); return; }
   if (action === "enter") {
     setMyPresence(roomId, "in");
   } else if (action === "exit") {
     setMyPresence(null, null);
-  } else if (action === "bookmark") {
-    if (cur === "booked") setMyPresence(null, null);
-    else setMyPresence(roomId, "booked");
   }
 }
 
 function friendRow(f) {
-  const kindLabel =
-    f.status === "in"
-      ? '<span class="friend-meta">入室中</span>'
-      : f.status === "booked"
-      ? '<span class="friend-meta">使う予定</span>'
-      : '<span class="friend-meta">予定なし</span>';
+  const kindLabel = f.status === "in" ? '<span class="friend-meta">入室中</span>' : "";
   const name = f.isMe ? "あなた" : (f.userName ? `@${f.userName}` : "?");
   const initial = (f.userName || "?").slice(0, 1);
   const avatar = f.photoURL
