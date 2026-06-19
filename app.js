@@ -1404,13 +1404,19 @@ function renderListView() {
   if (free.length) {
     html += `<div class="list-section">`;
     html += `<div class="list-section-head">空き教室 (${free.length}室)</div>`;
+    const nowDate = new Date();
+    const nowMin = nowDate.getHours() * 60 + nowDate.getMinutes();
     for (const r of free) {
       const here = peopleInRoom(r.room);
       const next = nextCoursesToday(r.room, state.semester, state.day, state.period);
-      const nextStr =
-        next.length > 0
-          ? `次: ${next[0].period}限 ${truncate(next[0].course.name, 14)}`
-          : "今日この後の授業なし";
+      let nextStr;
+      if (next.length > 0) {
+        const startMin = toMin(PERIOD_TIMES[next[0].period][0]);
+        const diff = Math.max(0, startMin - nowMin);
+        nextStr = `あと${diff}分`;
+      } else {
+        nextStr = "今日この後の授業なし";
+      }
       const tags = (r.tags || []).map(
         (t) => `<span class="badge tag">${t}</span>`
       ).join("");
