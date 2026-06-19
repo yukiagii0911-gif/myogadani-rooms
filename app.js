@@ -1406,13 +1406,19 @@ function renderListView() {
     html += `<div class="list-section-head">空き教室 (${free.length}室)</div>`;
     const nowDate = new Date();
     const nowMin = nowDate.getHours() * 60 + nowDate.getMinutes();
-    for (const r of free) {
-      const here = peopleInRoom(r.room);
+    // 各教室の「あと何分空きか」を算出し、長い順にソート (今日この後授業なしは Infinity 扱い)
+    const freeWithDiff = free.map((r) => {
       const next = nextCoursesToday(r.room, state.semester, state.day, state.period);
+      const diff = next.length > 0
+        ? Math.max(0, toMin(PERIOD_TIMES[next[0].period][0]) - nowMin)
+        : Infinity;
+      return { r, next, diff };
+    });
+    freeWithDiff.sort((a, b) => b.diff - a.diff);
+    for (const { r, next, diff } of freeWithDiff) {
+      const here = peopleInRoom(r.room);
       let nextStr;
       if (next.length > 0) {
-        const startMin = toMin(PERIOD_TIMES[next[0].period][0]);
-        const diff = Math.max(0, startMin - nowMin);
         const h = Math.floor(diff / 60);
         const m = diff % 60;
         const hm = h > 0 && m > 0 ? `${h}時間${m}分` : h > 0 ? `${h}時間` : `${m}分`;
