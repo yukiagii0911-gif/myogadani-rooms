@@ -1176,6 +1176,17 @@ function bindEvents() {
     setNowState();
     render();
   }, 60000);
+  // タブ復帰・PWA レジューム時に即座に最新時刻で再描画
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      setNowState();
+      render();
+    }
+  });
+  window.addEventListener("focus", () => {
+    setNowState();
+    render();
+  });
 }
 
 // === ピッカー === //
