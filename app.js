@@ -1451,7 +1451,7 @@ function renderListView() {
           <span class="dot free"></span>
           <span class="room-id">${r.room}</span>
           <span class="body">
-            <span class="room-line room-line-lg">${nextStr}</span>
+            <span class="room-line">${nextStr}</span>
           </span>
           <span class="badges">
             ${peopleBadge}

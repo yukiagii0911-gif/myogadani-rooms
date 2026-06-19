@@ -1,4 +1,4 @@
-const CACHE_NAME = "myogadani-v20260619a";
+const CACHE_NAME = "myogadani-v20260619b";
 const APP_SHELL = [
   "./",
   "./index.html",
