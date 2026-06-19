@@ -1336,3 +1336,79 @@ button:focus-visible { outline: 2px solid var(--accent-deep); outline-offset: 2p
   cursor: default;
 }
 .tt-cell.tt-empty-readonly:active { opacity: 1; }
+
+/* PWA インストール案内バナー */
+.install-banner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 12px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 90;
+  font-size: 13px;
+  color: var(--text);
+}
+.install-banner[hidden] { display: none; }
+.install-banner-icon {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--free-deep);
+}
+.install-banner-icon [data-icon] { width: 20px; height: 20px; }
+.install-banner-text { flex: 1; line-height: 1.35; }
+.install-banner-add {
+  flex: 0 0 auto;
+  background: var(--accent);
+  color: var(--text);
+  border: 1px solid var(--accent-deep);
+  border-radius: var(--r-md);
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.install-banner-add:active { opacity: 0.7; }
+.install-banner-close {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  color: var(--subtext);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.install-banner-close:active { background: var(--bg); }
+
+/* iOS ホーム画面追加の手順シート */
+.install-steps {
+  margin: 8px 16px 16px;
+  padding: 0 0 0 24px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+}
+.install-steps li { margin-bottom: 6px; }
+.install-steps strong { color: var(--accent-deep); }
+.install-note {
+  margin: 0 16px 20px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: var(--r-md);
+  font-size: 12px;
+  color: var(--subtext);
+  line-height: 1.5;
+}

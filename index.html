@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="茗荷谷">
 <meta name="mobile-web-app-capable" content="yes">
-<link rel="stylesheet" href="style.css?v=20260619b">
+<link rel="stylesheet" href="style.css?v=20260619c">
 </head>
 <body>
 
@@ -245,6 +245,32 @@
   </button>
 </nav>
 
+<!-- インストール案内バナー (PWA: ホーム画面に追加) -->
+<div class="install-banner" id="install-banner" hidden>
+  <span class="install-banner-icon" data-icon="building" aria-hidden="true"></span>
+  <span class="install-banner-text">ホーム画面に追加してアプリのように使う</span>
+  <button class="install-banner-add" id="install-add">追加</button>
+  <button class="install-banner-close" id="install-close" aria-label="閉じる">×</button>
+</div>
+
+<!-- iOS Safari 用「ホーム画面に追加」手順シート -->
+<aside class="sheet" id="install-ios-sheet" aria-hidden="true">
+  <div class="sheet-backdrop" data-close-sheet="install-ios-sheet"></div>
+  <div class="sheet-body" role="dialog">
+    <div class="sheet-handle"></div>
+    <div class="picker-head">
+      <div class="picker-title">ホーム画面に追加</div>
+      <button class="icon-btn icon-btn-sm" data-close-sheet="install-ios-sheet" aria-label="閉じる" data-icon="close"></button>
+    </div>
+    <ol class="install-steps">
+      <li>Safari 下部の<strong>共有アイコン</strong>(□↑)をタップ</li>
+      <li>メニューを下にスクロール →<strong>「ホーム画面に追加」</strong>を選択</li>
+      <li>右上の<strong>「追加」</strong>をタップ</li>
+    </ol>
+    <p class="install-note">ホーム画面のアイコンから開くと、URLバーなしでアプリのように使えます。</p>
+  </div>
+</aside>
+
 <!-- Firebase SDK (v10 ESM) -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
@@ -283,13 +309,74 @@
   if (typeof window.__onFirebaseReady === "function") window.__onFirebaseReady();
 </script>
 
-<script type="module" src="app.js?v=20260619b"></script>
+<script type="module" src="app.js?v=20260619c"></script>
 <script>
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).catch((e) => console.warn("[sw] register failed", e));
     });
   }
+
+  // PWA インストール案内 (Add to Home Screen)
+  (function setupInstallPrompt() {
+    const banner = document.getElementById("install-banner");
+    const iosSheet = document.getElementById("install-ios-sheet");
+    const btnAdd = document.getElementById("install-add");
+    const btnClose = document.getElementById("install-close");
+    if (!banner || !btnAdd || !btnClose) return;
+
+    const STORAGE_KEY = "install-banner-dismissed";
+    let deferredPrompt = null;
+
+    function isStandalone() {
+      return window.matchMedia("(display-mode: standalone)").matches
+        || window.navigator.standalone === true;
+    }
+    function isIOS() {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    }
+    function isDismissed() {
+      return localStorage.getItem(STORAGE_KEY) === "1";
+    }
+    function show() {
+      if (isStandalone()) return;
+      if (isDismissed()) return;
+      banner.hidden = false;
+    }
+    function hideAndDismiss() {
+      banner.hidden = true;
+      localStorage.setItem(STORAGE_KEY, "1");
+    }
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      show();
+    });
+
+    btnAdd.addEventListener("click", async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const result = await deferredPrompt.userChoice;
+        deferredPrompt = null;
+        if (result.outcome === "accepted") hideAndDismiss();
+        return;
+      }
+      if (isIOS() && iosSheet) {
+        iosSheet.setAttribute("aria-hidden", "false");
+        return;
+      }
+      alert("ブラウザのメニューから「ホーム画面に追加」または「アプリをインストール」を選んでください");
+    });
+
+    btnClose.addEventListener("click", hideAndDismiss);
+
+    if (isIOS() && !isStandalone() && !isDismissed()) {
+      setTimeout(show, 1500);
+    }
+
+    window.addEventListener("appinstalled", hideAndDismiss);
+  })();
 </script>
 </body>
 </html>
